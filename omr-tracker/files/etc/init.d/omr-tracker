@@ -1,0 +1,294 @@
+#!/bin/sh /etc/rc.common
+# shellcheck disable=SC2039
+# vim: set noexpandtab tabstop=4 shiftwidth=4 softtabstop=4 :
+# Copyright (C) 2018-2021 Ycarus (Yannick Chabanois) <ycarus@zugaina.org>
+# Released under GPL 3. See LICENSE for the full terms.
+
+# shellcheck disable=SC2034
+{
+	START=90
+	STOP=10
+	USE_PROCD=1
+}
+
+. /usr/lib/unbound/iptools.sh
+. /lib/functions/network.sh
+
+_validate_section() {
+	local tmp_hosts=$hosts tmp_hosts6=$hosts6 tmp_timeout=$timeout tmp_tries=$tries
+	local tmp_interval=$interval tmp_interval_tries=$interval_tries tmp_options=$options tmp_type=$type tmp_enabled=$enabled tmp_wait_test=$wait_test tmp_server_http_test=$server_http_test
+
+	uci_validate_section omr-tracker "$1" "$2" \
+		'hosts:list(host)'  \
+		'hosts6:list(host)'  \
+		'timeout:uinteger'  \
+		'tries:uinteger'    \
+		'interval:uinteger' \
+		'interval_tries:uinteger' \
+		'wait_test:uinteger' \
+		'type:string:undef'  \
+		'enabled:bool:1'    \
+		'server_http_test:bool:0'    \
+		'options:string'
+
+	[ -z "$hosts"    ] && hosts=$tmp_hosts
+	[ -z "$hosts6"    ] && hosts6=$tmp_hosts6
+	[ -z "$timeout"  ] && timeout=$tmp_timeout
+	[ -z "$tries"    ] && tries=$tmp_tries
+	[ -z "$interval" ] && interval=$tmp_interval
+	[ -z "$interval_tries" ] && interval_tries=$tmp_interval_tries
+	[ -z "$wait_test" ] && wait_test=$tmp_wait_test
+	[ -z "$options"  ] && options=$tmp_options
+	[ "$type" = "undef" ] && type=${tmp_type:-ping}
+	[ -z "$server_http_test"  ] && server_http_test=$tmp_server_http_test
+	[ -z "$enabled"  ] && enabled=$tmp_enabled
+}
+
+_launch_tracker() {
+	case "$1" in
+		loopback|lan*|if0*) return;;
+	esac
+	[ -z "$1" ] && return
+	local hosts hosts6 timeout tries interval interval_tries options type enabled wait_test ipv6 proto server_http_test
+	_validate_section "defaults" "defaults"
+	_validate_section "interface" "$1"
+
+	local ifname ip4table
+	network_get_device ifname $1
+	[ -z "$ifname" ] && network_get_physdev ifname $1
+	[ -z "$ifname" ] && ifname=$(ifstatus "$1" | jsonfilter -q -e '@["l3_device"]')
+	[ -z "$ifname" ] && ifname=$(ifstatus "$1_4" | jsonfilter -q -e '@["l3_device"]')
+	[ -z "$ifname" ] && config_get ifname "$1" device
+	[ -n "$(echo $ifname | grep '@')" ] && ifname=$(ifstatus "$1" | jsonfilter -q -e '@["device"]')
+
+	config_get multipath "$1" multipath
+	config_get ifenabled "$1" auto
+	config_get gateway "$1" gateway
+	config_get ipv6 "$1" ipv6
+	config_get proto "$1" proto
+
+	[ -z "$ifname" ] || [ -z "$multipath" ] || [ "$multipath" = "off" ] && [ "$1" != "glorytun" ] && [ "$1" != "omrvpn" ] && [ "$( uci -q get openmptcprouter.$1.multipathvpn)" != "1" ] && return
+	[ "$1" = "omrvpn" ] && [ "$(uci -q get openmptcprouter.settings.vpn)" = "none" ] && return
+	[ "${ifenabled}" = "0" ] && return
+	[ "${enabled}" = "0" ] && return
+	[ -z "${hosts}" ] && [ "$type" != "none" ] && return
+	ifstatus=$(ifstatus "$1" | jsonfilter -q -e '@["up"]')
+	ifdevice=$(ifstatus "$1" | jsonfilter -q -e '@["device"]')
+	[ "${ifstatus}" = "false" ] && [ -z "${ifdevice}" ] && return
+	[ -z "${interval_tries}" ] && interval_tries=1
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-tracker "$1" $options
+	procd_append_param env "OMR_TRACKER_HOSTS=$hosts"
+	procd_append_param env "OMR_TRACKER_HOSTS6=$hosts6"
+	procd_append_param env "OMR_TRACKER_TIMEOUT=$timeout"
+	procd_append_param env "OMR_TRACKER_TRIES=$tries"
+	procd_append_param env "OMR_TRACKER_INTERVAL=$interval"
+	procd_append_param env "OMR_TRACKER_INTERVAL_TRIES=$interval_tries"
+	procd_append_param env "OMR_TRACKER_TABLE=$ip4table"
+	procd_append_param env "OMR_TRACKER_DEVICE=$ifname"
+	procd_append_param env "OMR_TRACKER_DEVICE_GATEWAY=$gateway"
+	procd_append_param env "OMR_TRACKER_TYPE=$type"
+	procd_append_param env "OMR_TRACKER_IPV6=$ipv6"
+	procd_append_param env "OMR_TRACKER_PROTO=$proto"
+	procd_append_param env "OMR_TRACKER_WAIT_TEST=$wait_test"
+	procd_append_param env "OMR_TRACKER_SERVER_HTTP_TEST=$server_http_test"
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+	sleep 2
+}
+
+_launch_server_tracker() {
+	local hosts timeout tries interval interval_tries options type enabled wait_test
+	_validate_section "defaults" "defaults"
+	_validate_section "server" "server"
+
+	[ "${enabled}" = "0" ] && return
+	[ -z "${interval_tries}" ] && interval_tries=1
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-tracker-server "$1" $options
+	procd_append_param env "OMR_TRACKER_TIMEOUT=$timeout"
+	procd_append_param env "OMR_TRACKER_TRIES=$tries"
+	procd_append_param env "OMR_TRACKER_INTERVAL=$interval"
+	procd_append_param env "OMR_TRACKER_INTERVAL_TRIES=$interval_tries"
+	procd_append_param env "OMR_TRACKER_WAIT_TEST=$wait_test"
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+	sleep 2
+}
+
+_launch_gre_tracker() {
+	local hosts timeout tries interval interval_tries options type enabled wait_test
+	_validate_section "defaults" "defaults"
+	_validate_section "gre" "gre"
+
+	[ "${enabled}" = "0" ] && return
+	[ -z "${interval_tries}" ] && interval_tries=1
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-tracker-gre "$1" $options
+	procd_append_param env "OMR_TRACKER_TIMEOUT=$timeout"
+	procd_append_param env "OMR_TRACKER_TRIES=$tries"
+	procd_append_param env "OMR_TRACKER_INTERVAL=$interval"
+	procd_append_param env "OMR_TRACKER_INTERVAL_TRIES=$interval_tries"
+	procd_append_param env "OMR_TRACKER_WAIT_TEST=$wait_test"
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+	sleep 2
+}
+
+_initialize_shadowsocks_tracker() {
+	local redir_tcp server tracker_server
+	server=$1
+	
+	[ -n "$(echo $server | grep sss)" ] || return
+	[ -z "$server" ] && return
+	
+	#redir_tcp=$(uci -q get shadowsocks-libev.ss_rules.redir_tcp)
+	#config_get tracker_server ss_rules server
+	config_get ss_disabled $server disabled 0
+	[ "$ss_disabled" = "0" ] && ss_enable="1"
+	[ -z "$(uci -q get shadowsocks-libev.tracker_${server})" ] && [ "$ss_disabled" != "1" ] && {
+		logger -t "omr-tracker" "Create ShadowSock tracker ss_local..."
+		uci -q batch <<-EOF >/dev/null
+		    set shadowsocks-libev.tracker_${server}=ss_local
+		    set shadowsocks-libev.tracker_${server}.server=$server
+		    set shadowsocks-libev.tracker_${server}.local_address="127.0.0.1"
+		    set shadowsocks-libev.tracker_${server}.local_port=1111
+		    set shadowsocks-libev.tracker_${server}.mode=tcp_and_udp
+		    set shadowsocks-libev.tracker_${server}.timeout=600
+		    set shadowsocks-libev.tracker_${server}.fast_open=1
+		    set shadowsocks-libev.tracker_${server}.syslog=0
+		    set shadowsocks-libev.tracker_${server}.reuse_port=1
+		    set shadowsocks-libev.tracker_${server}.mptcp=1
+		    set shadowsocks-libev.tracker_${server}.verbose=0
+		    commit shadowsocks-libev
+		EOF
+		logger -t "omr-tracker" "Restart ShadowSocks"
+		/etc/init.d/shadowsocks-libev restart
+	}
+#	[ -n "$tracker_server" ] && [ "$server" = "$tracker_server" ] || {
+#		logger -t "omr-tracker" "Set ShadowSock tracker to current server ($tracker_server -> $server)..."
+#		uci -q batch <<-EOF >/dev/null
+#		    set shadowsocks-libev.tracker.server=$server
+#		    commit shadowsocks-libev
+#		EOF
+#		/etc/init.d/shadowsocks-libev restart
+#	}
+}
+
+_launch_shadowsocks_tracker() {
+	local hosts timeout tries interval local_port enabled server wait_test
+	
+	[ "$(echo $1 | grep tracker)" != "" ] || return
+	
+	_validate_section "proxy" "proxy"
+	
+	config_get local_port "$1" local_port
+	local disabled
+	config_get disabled "$1" disabled 0
+	config_get server "$1" server
+
+	[ "$enabled" = "0" ] || [ "$disabled" = "1" ] || [ -z "$hosts" ] && return
+	[ -z "$server" ] && return
+	[ "$(uci -q get shadowsocks-libev.$server.server)" = "192.168.1.3" ] || [ "$(uci -q get shadowsocks-libev.$server.server)" = "" ] && return
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-tracker-ss "$1"
+	procd_append_param env "OMR_TRACKER_HOSTS=$hosts"
+	procd_append_param env "OMR_TRACKER_TIMEOUT=$timeout"
+	procd_append_param env "OMR_TRACKER_TRIES=$tries"
+	procd_append_param env "OMR_TRACKER_INTERVAL=$interval"
+	procd_append_param env "OMR_TRACKER_PROXY=127.0.0.1:$local_port"
+	procd_append_param env "OMR_TRACKER_WAIT_TEST=$wait_test"
+	procd_append_param env "OMR_TRACKER_SERVER=$server"
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+	sleep 1
+}
+
+_launch_v2ray_tracker() {
+	local hosts timeout tries interval local_port enabled server wait_test
+	
+	_validate_section "proxy" "proxy"
+	[ "$enabled" = "0" ] || [ -z "$hosts" ] && return
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-tracker-v2ray "$1"
+	procd_append_param env "OMR_TRACKER_HOSTS=$hosts"
+	procd_append_param env "OMR_TRACKER_TIMEOUT=$timeout"
+	procd_append_param env "OMR_TRACKER_TRIES=$tries"
+	procd_append_param env "OMR_TRACKER_INTERVAL=$interval"
+	procd_append_param env "OMR_TRACKER_PROXY=127.0.0.1:1111"
+	procd_append_param env "OMR_TRACKER_WAIT_TEST=$wait_test"
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+	sleep 1
+}
+
+_multi_server() {
+	config_get backup $1 backup
+	[ "$backup" = "1" ] && multiserver=true
+}
+
+_gre_tunnel() {
+	config_get proto $1 proto
+	[ "$proto" = "gre" ] && gretunnel=true
+}
+
+start_service() {
+	local ss_enable=0
+	logger -t "omr-tracker" "Launching..."
+	config_load shadowsocks-libev
+	config_foreach _initialize_shadowsocks_tracker server
+
+	config_load network
+	config_foreach _launch_tracker interface
+
+	if [ "$ss_enable" = "1" ]; then
+		config_load shadowsocks-libev
+		config_foreach _launch_shadowsocks_tracker ss_local
+	#elif [ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ]; then
+	#	/etc/init.d/shadowsocks-libev rules_down
+	fi
+	config_load v2ray
+	config_get v2rayenabled main enabled
+	if [ "$v2rayenabled" = "1" ]; then
+		_launch_v2ray_tracker
+	fi
+	
+	multiserver=false
+	config_load openmptcprouter
+	config_foreach _multi_server server
+	[ "$multiserver" = true ] && _launch_server_tracker
+	gretunnel=false
+	config_load network
+	config_foreach _gre_tunnel interface
+	[ "$gretunnel" = true ] && _launch_gre_tracker
+	logger -t "omr-tracker" "Launched"
+}
+
+service_triggers() {
+	procd_add_reload_trigger omr-tracker network shadowsocks-libev v2ray
+}
+
+reload_service() {
+	stop
+	start
+}

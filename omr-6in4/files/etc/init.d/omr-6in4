@@ -1,0 +1,163 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2018-2022 Ycarus (Yannick Chabanois) <ycarus@zugaina.org>
+# shellcheck disable=SC2039
+# vim: set noexpandtab tabstop=4 shiftwidth=4 softtabstop=4 :
+
+# shellcheck disable=SC2034
+{
+	START=99
+	STOP=10
+	USE_PROCD=1
+}
+
+set_shadowsocks_address() {
+	uci -q set shadowsocks-libev.$1.local_address="$2"
+}
+
+set_ipv6_state() {
+	local disable_ipv6="$(uci -q get openmptcprouter.settings.disable_ipv6)"
+	[ -z "$disable_ipv6" ] && disable_ipv6="1"
+	#previous=$(sysctl -qn net.ipv6.conf.all.disable_ipv6 | tr -d "\n")
+	previous="$(uci -q get network.lan.ipv6)"
+	#sysctl -qw net.ipv6.conf.all.disable_ipv6=$disable_ipv6
+	#sed -i "s:^net.ipv6.conf.all.disable_ipv6=[0-9]*:net.ipv6.conf.all.disable_ipv6=$disable_ipv6:" /etc/sysctl.d/zzz_openmptcprouter.conf
+	sed -i "s:^net.ipv6.conf.all.disable_ipv6=[0-9]*::" /etc/sysctl.d/zzz_openmptcprouter.conf
+	sysctl -qw net.ipv6.conf.all.disable_ipv6=0
+
+	uci -q batch <<-EOF >/dev/null
+		set firewall.@defaults[0].disable_ipv6=$disable_ipv6
+		commit firewall
+	EOF
+
+	if [ "$disable_ipv6" = "1" ]; then
+		logger -t "omr-6in4" "Disable IPv6"
+		uci -q batch <<-EOF >/dev/null
+			set unbound.@unbound[-1].protocol='ip4_only'
+			commit unbound
+			del_list v2ray.main.inbounds="omr6"
+			commit v2ray
+		EOF
+		config_load shadowsocks-libev
+		config_foreach set_shadowsocks_address ss_redir "0.0.0.0"
+		uci -q batch <<-EOF >/dev/null
+			commit shadowsocks-libev
+		EOF
+		[ ! -f /etc/wgetrc ] && cp /etc/wgetrc4 /etc/wgetrc
+	else
+		logger -t "omr-6in4" "Enable IPv6"
+		uci -q batch <<-EOF >/dev/null
+			set network.lan.delegate="0"
+			set network.omr6in4.force_link=1
+			set network.omr6in4.metric=1
+			delete network.omr6in4.auto
+			set unbound.@unbound[-1].protocol='mixed'
+			commit unbound
+		EOF
+		if [ "$(uci -q get network.globals.ula_prefix)" = "" ]; then
+			r1=$(dd if=/dev/urandom bs=1 count=1 |hexdump -e '1/1 "%02x"')
+			r2=$(dd if=/dev/urandom bs=2 count=1 |hexdump -e '2/1 "%02x"')
+			r3=$(dd if=/dev/urandom bs=2 count=1 |hexdump -e '2/1 "%02x"')
+			uci -q set network.globals.ula_prefix=fd$r1:$r2:$r3::/48
+		fi
+		
+		config_load shadowsocks-libev
+		config_foreach set_shadowsocks_address ss_redir "::"
+		uci -q batch <<-EOF >/dev/null
+			commit network
+			commit dhcp
+			commit shadowsocks-libev
+		EOF
+		/etc/init.d/shadowsocks-libev restart
+		if [ "$(uci -q get v2ray.main.inbounds | grep omr6)" = "" ]; then
+			uci -q batch <<-EOF >/dev/null
+				add_list v2ray.main.inbounds="omr6"
+				commit v2ray
+			EOF
+			/etc/init.d/v2ray restart
+		fi
+		rm -f /etc/wgetrc
+	fi
+	/etc/init.d/odhcpd restart
+	if [ "$previous" != "1" ]; then
+		env -i /bin/ubus call network reload
+	fi
+}
+
+set_ipv6_state_intf() {
+	local disable_ipv6="$(uci -q get openmptcprouter.settings.disable_ipv6)"
+	local intf="$1"
+	config_get ip4table $intf ip4table
+	config_get ipv6 $intf ipv6 "0"
+	if [ "$ip4table" = "lan" ]; then
+		if [ "$disable_ipv6" = "1" ] && [ "$ipv6" != "0" ]; then
+			logger -t "omr-6in4" "Disable IPv6 on ${intf}"
+			uci -q batch <<-EOF >/dev/null
+				set dhcp.${intf}.ra_default="0"
+				delete network.${intf}.ipv6
+				delete dhcp.${intf}.dhcpv6
+				delete dhcp.${intf}.ra
+				delete dhcp.${intf}.ra_default
+				delete dhcp.${intf}.ra_management
+				delete dhcp.${intf}.ra_preference
+				commit network
+				commit dhcp
+			EOF
+		elif [ "$disable_ipv6" != "1" ] && [ "$ipv6" != "1" ]; then
+			logger -t "omr-6in4" "Enable IPv6 on ${intf}"
+			uci -q batch <<-EOF >/dev/null
+				set dhcp.${intf}.dhcpv6="server"
+				set dhcp.${intf}.ra="server"
+				set dhcp.${intf}.ra_default="1"
+				set dhcp.${intf}.ra_preference="high"
+				set dhcp.${intf}.ra_management="1"
+				delete dhcp.${intf}.ra_flags
+				add_list dhcp.${intf}.ra_flags='managed-config'
+				set dhcp.${intf}.ra_slaac='1'
+				add_list dhcp.${intf}.ra_flags='other-config'
+				set network.${intf}.ipv6="1"
+				set network.${intf}.delegate="0"
+			EOF
+			if [ "$(uci -q get network.${intf}.ip6assign)" = "" ]; then
+				uci -q set network.${intf}.ip6assign='60'
+			fi
+			uci -q batch <<-EOF >/dev/null
+				commit network
+				commit dhcp
+			EOF
+		fi
+	fi
+}
+
+start_service() {
+	[ "$(uci -q get openmptcprouter.settings.disable_ipv6)" != "1" ] && {
+		config_load network
+		config_foreach set_ipv6_state_intf interface
+		set_ipv6_state
+	}
+	[ "$(uci -q get openmptcprouter.settings.disable_ipv6)" != "0" ] && {
+		config_load network
+		config_foreach set_ipv6_state_intf interface
+		ifdown omr6in4
+		[ -z "$(/etc/init.d/odhcpd status | grep inactive)" ] && /etc/init.d/odhcpd stop
+		return
+	}
+	[ "$(ifstatus omr6in4 | jsonfilter -e '@.up' | tr -d '\n')" != "true" ] && ifup omr6in4
+	multipath 6in4-omr6in4 off 2>&1 >/dev/null
+
+	procd_open_instance
+	# shellcheck disable=SC2086
+	procd_set_param command /bin/omr-6in4
+	procd_set_param limits nofile="51200 51200"
+	procd_set_param respawn 0 10 0
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+service_triggers() {
+	procd_add_reload_trigger "openmptcprouter"
+}
+
+reload_service() {
+	stop
+	start
+}

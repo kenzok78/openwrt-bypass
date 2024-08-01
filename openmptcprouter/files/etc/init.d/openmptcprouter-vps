@@ -79,6 +79,9 @@ _get_json() {
 		else
 			result=`curl --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
 		fi
+		if [ "$(echo $result | grep 'Could not validate credentials')" ]; then
+			result=''
+		fi
 		echo $result
 	} || {
 		echo ''
@@ -97,6 +100,9 @@ _set_json() {
 			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://$server:$serverport/$route`
 		else
 			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
+		fi
+		if [ "$(echo $result | grep 'Could not validate credentials')" ]; then
+			result=''
 		fi
 		echo $result
 	} || {
@@ -1621,7 +1627,7 @@ _set_config_from_vps() {
 			config_foreach _set_ss_server server "server" $vpsip
 		fi
 		uci -q commit shadowsocks-libev
-		if [ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ]; then
+		if [ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ] && [ -n "$(uci -q changes shadowsocks-libev)" ]; then
 			logger -t "OMR-VPS" "Shadowsocks restart..."
 			/etc/init.d/shadowsocks-libev restart >/dev/null 2>&1
 		fi
@@ -1649,7 +1655,7 @@ _set_config_from_vps() {
 			config_foreach _set_ssrust_server server "server" $vpsip
 		fi
 		uci -q commit shadowsocks-rust
-		if [ "$(uci -q get shadowsocks-rust.sss0.disabled)" != "1" ]; then
+		if [ "$(uci -q get shadowsocks-rust.sss0.disabled)" != "1" ] && [ -n "$(uci -q changes shadowsocks-rust)" ]; then
 			logger -t "OMR-VPS" "Shadowsocks Rust restart..."
 			/etc/init.d/shadowsocks-rust restart >/dev/null 2>&1
 		fi
@@ -1659,7 +1665,7 @@ _set_config_from_vps() {
 	v2ray_key="$(echo "$vps_config" | jsonfilter -q -e '@.v2ray.config.key')"
 	#v2ray_port="$(echo "$vps_config" | jsonfilter -q -e '@.v2ray.config.port')"
 	v2ray_port="65228"
-	if ([ -n "$v2ray_key" ] && [ "$v2ray_key" != "$(uci -q get v2ray.omrout.s_vmess_user_id)" ]) || ([ -n "$v2ray_port" ] && [ "$v2ray_port" != "$(uci -q get v2ray.omrout.s_vmess.port)" ]); then
+	if [ -n "$(uci -q get v2ray.omr)" ] && (([ -n "$v2ray_key" ] && [ "$v2ray_key" != "$(uci -q get v2ray.omrout.s_vmess_user_id)" ]) || ([ -n "$v2ray_port" ] && [ "$v2ray_port" != "$(uci -q get v2ray.omrout.s_vmess.port)" ])); then
 		uci -q batch <<-EOF >/dev/null
 			set v2ray.omrout.s_socks_user_id="$v2ray_key"
 			set v2ray.omrout.s_socks_port="$((v2ray_port+3))"
@@ -1677,8 +1683,10 @@ _set_config_from_vps() {
 			uci -q set v2ray.omrout.s_socks_address="$vpsip"
 		fi
 		uci -q commit v2ray
-		logger -t "OMR-VPS" "V2ray restart..."
-		/etc/init.d/v2ray restart >/dev/null 2>&1
+		if [ "$(uci -q get v2ray.main.enabled)" = "1" ] && [ -n "$(uci -q changes v2ray)" ]; then
+			logger -t "OMR-VPS" "V2ray restart..."
+			/etc/init.d/v2ray restart >/dev/null 2>&1
+		fi
 	fi
 
 	# XRay settings
@@ -1687,7 +1695,7 @@ _set_config_from_vps() {
 	xray_vless_reality_key="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.vless_reality_key')"
 	#v2ray_port="$(echo "$vps_config" | jsonfilter -q -e '@.v2ray.config.port')"
 	xray_port="65248"
-	if ([ -n "$xray_key" ] && [ "$xray_key" != "$(uci -q get xray.omrout.s_vmess_user_id)" ]) || ([ -n "$xray_port" ] && [ "$xray_port" != "$(uci -q get xray.omrout.s_vmess.port)" ]); then
+	if [ -n "$(uci -q get xray.omr)" ] && (([ -n "$xray_key" ] && [ "$xray_key" != "$(uci -q get xray.omrout.s_vmess_user_id)" ]) || ([ -n "$xray_port" ] && [ "$xray_port" != "$(uci -q get xray.omrout.s_vmess.port)" ])); then
 		uci -q batch <<-EOF >/dev/null
 			set xray.omrout.s_shadowsocks_port="$((xray_port+4))"
 			set xray.omrout.s_shadowsocks_password="$xray_sskey"
@@ -1712,14 +1720,16 @@ _set_config_from_vps() {
 			uci -q set xray.omrout.s_shadowsocks_address="$vpsip"
 		fi
 		uci -q commit xray
-		logger -t "OMR-VPS" "Xray restart..."
-		/etc/init.d/xray restart >/dev/null 2>&1
+		if [ "$(uci -q get xray.main.enabled)" = "1" ] && [ -n "$(uci -q changes xray)" ]; then
+			logger -t "OMR-VPS" "Xray restart..."
+			/etc/init.d/xray restart >/dev/null 2>&1
+		fi
 	fi
 
 	# Glorytun settings
 	glorytun_key="$(echo "$vps_config" | jsonfilter -q -e '@.glorytun.key')"
 	glorytun_port="$(echo "$vps_config" | jsonfilter -q -e '@.glorytun.port')"
-	if ([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun.vpn.port)" ]); then
+	if [ -n "$(uci -q get glorytun.vpn)" ] && (([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun.vpn.port)" ])); then
 		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		glorytun_state=0
 		if [ "$vpn" = "glorytun_tcp" ]; then
@@ -1739,10 +1749,12 @@ _set_config_from_vps() {
 			uci -q set glorytun.vpn.host="$vpsip"
 		fi
 		uci -q commit glorytun
-		logger -t "OMR-VPS" "Glorytun restart..."
-		/etc/init.d/glorytun restart >/dev/null 2>&1
+		if [ -n "$(uci -q changes glorytun)" ]; then
+			logger -t "OMR-VPS" "Glorytun restart..."
+			/etc/init.d/glorytun restart >/dev/null 2>&1
+		fi
 	fi
-	if ([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun-udp.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun-udp.vpn.port)" ]); then
+	if [ -n "$(uci -q get glorytun.udp)" ] && (([ -n "$glorytun_key" ] && [ "$glorytun_key" != "$(uci -q get glorytun-udp.vpn.key)" ]) || ([ -n "$glorytun_port" ] || [ "$glorytun_port" != "$(uci -q get glorytun-udp.vpn.port)" ])); then
 		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		glorytun_state=0
 		if [ "$vpn" = "glorytun_udp" ]; then
@@ -1762,8 +1774,10 @@ _set_config_from_vps() {
 			uci -q set glorytun-udp.vpn.host="$vpsip"
 		fi
 		uci -q commit glorytun-udp
-		logger -t "OMR-VPS" "Glorytun UDP restart..."
-		/etc/init.d/glorytun-udp restart >/dev/null 2>&1
+		if [ -n "$(uci -q changes glorytun-udp)" ]; then
+			logger -t "OMR-VPS" "Glorytun UDP restart..."
+			/etc/init.d/glorytun-udp restart >/dev/null 2>&1
+		fi
 	fi
 
 	# OpenVPN settings
@@ -1790,8 +1804,10 @@ _set_config_from_vps() {
 			uci -q set openvpn.omr.remote="$vpsip"
 		fi
 		uci -q commit openvpn
-		logger -t "OMR-VPS" "OpenVPN restart..."
-		/etc/init.d/openvpn restart
+		if [ -n "$(uci -q changes openvpn)" ]; then
+			logger -t "OMR-VPS" "OpenVPN restart..."
+			/etc/init.d/openvpn restart
+		fi
 	}
 	openvpn_client_key="$(echo "$vps_config" | jsonfilter -q -e '@.openvpn.client_key')"
 	[ -n "$openvpn_client_key" ] && {
@@ -1827,13 +1843,15 @@ _set_config_from_vps() {
 			uci -q add_list openvpn.omr.remote="$vpsip"
 		fi
 		uci -q commit openvpn
-		logger -t "OMR-VPS" "OpenVPN restart..."
-		/etc/init.d/openvpn restart
+		if [ -n "$(uci -q changes openvpn)" ]; then
+			logger -t "OMR-VPS" "OpenVPN restart..."
+			/etc/init.d/openvpn restart
+		fi
 	}
 
 	# MLVPN settings
 	mlvpn_key="$(echo "$vps_config" | jsonfilter -q -e '@.mlvpn.key')"
-	if [ -n "$mlvpn_key" ] && [ "$mlvpn_key" != "$(uci -q get mlvpn.general.password)" ] && [ -f /etc/init.d/mlvpn ]; then
+	if [ -n "$(uci -q get mlvpn.general)" ] && [ -n "$mlvpn_key" ] && [ "$mlvpn_key" != "$(uci -q get mlvpn.general.password)" ] && [ -f /etc/init.d/mlvpn ]; then
 		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		mlvpn_state=0
 		if [ "$vpn" = "mlvpn" ]; then
@@ -1848,14 +1866,16 @@ _set_config_from_vps() {
 			uci -q set mlvpn.general.host="$vpsip"
 		fi
 		uci -q commit mlvpn
-		logger -t "OMR-VPS" "MLVPN restart..."
-		/etc/init.d/mlvpn restart
+		if [ -n "$(uci -q changes mlvpn)" ]; then
+			logger -t "OMR-VPS" "MLVPN restart..."
+			/etc/init.d/mlvpn restart
+		fi
 	fi
 
 	# DSVPN settings
 	dsvpn_key="$(echo "$vps_config" | jsonfilter -q -e '@.dsvpn.key')"
 	dsvpn_port="$(echo "$vps_config" | jsonfilter -q -e '@.dsvpn.port')"
-	if ([ -n "$dsvpn_key" ] && [ "$dsvpn_key" != "$(uci -q get dsvpn.vpn.key)" ]) || ([ -n "$dsvpn_port" ] && [ "$dsvpn_port" != "$(uci -q get dsvpn.vpn.port)" ]); then
+	if [ -n "$(uci -q get dsvpn.vpn)" ] && (([ -n "$dsvpn_key" ] && [ "$dsvpn_key" != "$(uci -q get dsvpn.vpn.key)" ]) || ([ -n "$dsvpn_port" ] && [ "$dsvpn_port" != "$(uci -q get dsvpn.vpn.port)" ])); then
 		dsvpn_state=0
 		if [ "$vpn" = "dsvpn" ]; then
 			dsvpn_state=1
@@ -1870,8 +1890,10 @@ _set_config_from_vps() {
 			uci -q set dsvpn.vpn.host="$vpsip"
 		fi
 		uci -q commit dsvpn
-		logger -t "OMR-VPS" "DSVPN restart..."
-		/etc/init.d/dsvpn restart
+		if [ -n "$(uci -q changes dsvpn)" ]; then
+			logger -t "OMR-VPS" "DSVPN restart..."
+			/etc/init.d/dsvpn restart
+		fi
 	fi
 
 	# Shorewall settings
@@ -1919,11 +1941,11 @@ _set_config_from_vps() {
 	vps_ipv6_addr="$(echo "$vps_config" | jsonfilter -q -e '@.network.ipv6')"
 	if [ -z "$vps_ipv6_addr" ]; then
 		if [ "$(uci -q get openmptcprouter.settings.disable_ipv6)" = "0" ]; then
-			logger -t "OMR-VPS" "No IPv6 support on VPS side. IPv6 disabled."
+			logger -t "OMR-VPS" "No IPv6 support on VPS side ?"
 		fi
-		uci -q batch <<-EOF >/dev/null
-			set openmptcprouter.settings.disable_ipv6=1
-		EOF
+		#uci -q batch <<-EOF >/dev/null
+		#	set openmptcprouter.settings.disable_ipv6=1
+		#EOF
 		#sysctl -qw net.ipv6.conf.all.disable_ipv6=1
 	else
 		uci -q batch <<-EOF >/dev/null
@@ -1940,8 +1962,10 @@ _set_config_from_vps() {
 			set network.omr6in4.gateway="$omr6in4_vps_localip"
 			commit network
 		EOF
-		/etc/init.d/network reload
-		sleep 6
+		if [ -n "$(uci -q changes network)" ]; then
+			/etc/init.d/network reload
+			sleep 6
+		fi
 	fi
 
 	# Get VPS iperf config
@@ -2231,10 +2255,9 @@ _config_service() {
 	if [ "$(uci -q get openmptcprouter.settings.firstboot)" != "0" ]; then
 		[ -n "$(cat /proc/cpuinfo | grep aes)" ] && {
 			vps_aes="$(echo "$vps_config" | jsonfilter -q -e '@.vps.aes')"
-			if [ "$vps_aes" != "false" ] && [ "$user_permission" != "ro" ]; then
+			method="$(uci -q get openmptcprouter.settings.encryption)"
+			if [ "$vps_aes" != "false" ] && [ "$user_permission" != "ro" ] && [ "$method" != "aes-256-gcm" ]; then
 				logger -t "OMR-VPS" "CPU support AES, set it by default"
-				#method="$(uci -q get shadowsocks-libev.sss0.method)"
-				method="$(uci -q get openmptcprouter.settings.encryption)"
 				uci -q batch <<-EOF >/dev/null
 					set openmptcprouter.settings.encryption="aes-256-gcm"
 					commit openmptcprouter
@@ -2258,6 +2281,8 @@ _config_service() {
 
 	[ -z "$vps_config" ] && vps_config=$(_get_json "config")
 	[ -z "$vps_config" ] && return
+	kernel="$(echo "$vps_config" | jsonfilter -q -e '@.vps.kernel')"
+	[ -z "$kernel" ] && return
 	user_permission="$(echo "$vps_config" | jsonfilter -q -e '@.user.permission')"
 
 	if [ "$user_permission" != "ro" ]; then
@@ -2284,7 +2309,7 @@ _config_service() {
 		[ -z "$(_set_vpn_vps)" ] && error=1
 		[ -z "$(_set_proxy_vps)" ] && error=1
 	fi
-	([ -n "$(uci -q get shadowsocks-libev.sss0)" ] || [ -n "$(uci -q get shadowsocks-rust.sss0)" ]) && [ "$(uci -q get shadowsocks-libev.sss0.key)" = "" ] && [ "$(uci -q get shadowsocks-rust.sss0.key)" = "" ] && uci -q set openmptcprouter.${servername}.get_config=1
+	([ -n "$(uci -q get shadowsocks-libev.sss0)" ] || [ -n "$(uci -q get shadowsocks-rust.sss0)" ]) && [ "$(uci -q get shadowsocks-libev.sss0.key)" = "" ] && [ "$(uci -q get shadowsocks-rust.sss0.password)" = "" ] && uci -q set openmptcprouter.${servername}.get_config=1
 	
 	#_set_pihole
 	[ -n "$wanips" ] && _set_wan_ip

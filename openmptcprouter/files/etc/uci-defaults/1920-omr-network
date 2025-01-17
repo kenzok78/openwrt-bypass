@@ -65,6 +65,7 @@ _setup_wan_interface() {
 	set network.$1.defaultroute=0
 	set network.$1.delegate=0
 	set network.$1.addlatency=0
+	delete network.$1.ifname
 	set network.${1}_dev=device
 	set network.${1}_dev.name=$2
 	set network.${1}_dev.txqueuelen=1000
@@ -195,6 +196,9 @@ set network.lan.delegate=0
 set network.lan.addlatency=0
 set network.lan.txqueuelen=2000
 set dhcp.lan.dhcpv4='server'
+set network.lan_dev=device
+set network.lan_dev.name=${lanif}
+
 EOF
 
 uci -q batch <<-EOF
@@ -291,6 +295,11 @@ if [ "$(uci -q show network.wan1 | grep multipath)" = "" ] && [ -z "$(uci -q get
 					_setup_wan_interface wan4 lan4 on
 					_macaddr=$(uci -q get "network.lan4.macaddr")
 					_setup_macaddr "wan4" "${_macaddr:-$(dd if=/dev/urandom bs=1024 count=1 2>/dev/null | md5sum | sed -e 's/^\(..\)\(..\)\(..\)\(..\)\(..\)\(..\).*$/\1:\2:\3:\4:\5:\6/' -e 's/^\(.\)[13579bdf]/\10/')}"
+					if [ -d /sys/class/net/lan5 ] || [ -n "$(ip link | grep ' lan5')" ]; then
+						_setup_wan_interface wan5 lan5 on
+						_macaddr=$(uci -q get "network.lan5.macaddr")
+						_setup_macaddr "wan5" "${_macaddr:-$(dd if=/dev/urandom bs=1024 count=1 2>/dev/null | md5sum | sed -e 's/^\(..\)\(..\)\(..\)\(..\)\(..\)\(..\).*$/\1:\2:\3:\4:\5:\6/' -e 's/^\(.\)[13579bdf]/\10/')}"
+					fi
 				fi
 			fi
 		else
@@ -485,13 +494,10 @@ if [ "$board" = "z8102ax-128m" ] || [ "$board" = "z8102ax-64m" ] || [ "$board" =
 	set network.modem2.delegate='0'
 	set network.modem2.multipath='on'
 	set network.modem2.defaultroute='0'
+	set network.modem1.device='/sys/devices/platform/soc/11200000.usb/usb1/1-1/1-1.1'
+	set network.modem2.device='/sys/devices/platform/soc/11200000.usb/usb1/1-1/1-1.2'
 	EOF
-	if [ -e /sys/devices/platform/soc/11200000.usb/usb1/1-1/1-1.1 ]; then
-		uci -q batch <<-EOF
-		set network.modem1.device='/sys/devices/platform/soc/11200000.usb/usb1/1-1/1-1.1'
-		set network.modem2.device='/sys/devices/platform/soc/11200000.usb/usb1/1-1/1-1.2'
-		EOF
-	elif [ -e /sys/devices/platform/soc/11200000.usb/usb2/2-1/2-1.1 ]; then
+	if [ -e /sys/devices/platform/soc/11200000.usb/usb2/2-1/2-1.1 ]; then
 		uci -q batch <<-EOF
 		set network.modem1.device='/sys/devices/platform/soc/11200000.usb/usb2/2-1/2-1.1'
 		set network.modem2.device='/sys/devices/platform/soc/11200000.usb/usb2/2-1/2-1.2'

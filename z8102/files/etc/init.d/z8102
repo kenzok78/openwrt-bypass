@@ -1,6 +1,6 @@
 #!/bin/sh /etc/rc.common
 # Copyright (C) 2013 OpenWrt.org
-# Copyright (C) 2023 Yannick Chabanois (Ycarus) for OpenMPTCProuter
+# Copyright (C) 2023-2025 Yannick Chabanois (Ycarus) for OpenMPTCProuter
 
 START=00
 USE_PROCD=1
@@ -49,6 +49,7 @@ modem1()
 		gpioset -t0 modem1=1
 	fi
 }
+
 modem2()
 {
 	# sim 2
@@ -89,6 +90,7 @@ modem2()
 		gpioset -t0 modem2=1
 	fi
 }
+
 start_service()
 {
 	modem="$1"

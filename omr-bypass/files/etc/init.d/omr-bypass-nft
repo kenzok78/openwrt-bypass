@@ -698,6 +698,7 @@ _intf_rule_xray_rules() {
 _intf_rule() {
 	local intf
 	[ "$1" = "all" ] && intf="all"
+	[ "$intf" = "omrvpn" ] && return
 	[ -z "$intf" ] && intf=$(ifstatus "$1" | jsonfilter -q -e '@["l3_device"]')
 	[ -n "$(echo $intf | grep '@')" ] && intf=$(ifstatus "$1" | jsonfilter -q -e '@["device"]')
 	[ -z "$intf" ] && config_get intf $1 device

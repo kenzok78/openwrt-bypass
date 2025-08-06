@@ -48,14 +48,14 @@ _login() {
 			#resolve="$(resolveip -t 5 $server)"
 			valid_ip6=$(valid_subnet6 $server)
 			if [ "$valid_ip6" = "ok" ]; then
-				auth=`curl --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
+				auth=`curl -6 --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
 			else
 				auth=`curl --max-time 10 -s -k -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://$server:$serverport/token`
 			fi
 			if [ -z "$auth" ]; then
 				for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 					if [ "$valid_ip6" = "ok" ]; then
-						auth=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
+						auth=`curl -6 --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://[$server]:$serverport/token`
 					else
 						auth=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Content-Type: application/x-www-form-urlencoded" -X POST -d 'username='$username'&password='$password https://$server:$serverport/token`
 					fi
@@ -86,14 +86,14 @@ _get_json() {
 		#resolve="$(resolveip -t 5 $server)"
 		valid_ip6=$(valid_subnet6 $server)
 		if [ "$valid_ip6" = "ok" ]; then
-			result=`curl --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
+			result=`curl -6 --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
 		else
 			result=`curl --max-time 10 -s -k -H "accept: application/json" -H "Authorization: Bearer $token" https://$server:$serverport/$route`
 		fi
 		if [ -z "$result" ]; then
 			for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 				if [ "$valid_ip6" = "ok" ]; then
-					result=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
+					result=`curl -6 --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://[$server]:$serverport/$route`
 				else
 					result=`curl --max-time 10 -s -k --interface $intf -H "accept: application/json" -H "Authorization: Bearer $token" https://$server:$serverport/$route`
 				fi
@@ -118,14 +118,14 @@ _set_json() {
 		#resolve="$(resolveip -t 5 $server)"
 		valid_ip6=$(valid_subnet6 $server)
 		if [ "$valid_ip6" = "ok" ]; then
-			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
+			result=`curl -6 --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
 		else
 			result=`curl --max-time 10 -s -k -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://$server:$serverport/$route`
 		fi
 		if [ -z "$result" ]; then
 			for intf in $(multipath 2>/dev/null | awk '/default/ { print $1 }'); do
 				if [ "$valid_ip6" = "ok" ]; then
-					result=`curl --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
+					result=`curl -6 --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://[$server]:$serverport/$route`
 				else
 					result=`curl --max-time 10 -s -k --interface $intf -H "Authorization: Bearer $token" -H "Content-Type: application/json" -X POST -d "$settings" https://$server:$serverport/$route`
 				fi
@@ -190,6 +190,33 @@ _set_openvpn_vps() {
 		local settings
 		settings='{"port": '$port', "cipher": "'$cipher'"}'
 		echo $(_set_json "openvpn" "$settings")
+	else
+		echo 1
+	fi
+}
+
+_set_softethervpn_vps() {
+	local enabled port key
+	enabled="$(uci -q get softethervpn.openmptcprouter.enable)"
+	[ "$enabled" != "1" ] && echo "SoftEtherVPN disabled" && return
+	#port="$(uci -q get softethervpn.openmptcprouter.port)"
+	cipher="$(uci -q get softethervpn.openmptcprouter.encryption)"
+	password="$(uci -q get softethervpn.openmptcprouter.password)"
+	local current_port current_cipher
+	[ -z "$vps_config" ] && vps_config=$(_get_json "config")
+	[ -z "$vps_config" ] && return
+	#current_port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	current_cipher="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.cipher')"
+	current_password="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.password')"
+	if [ "$current_key" != "$key" ]; then
+		uci -q set openmptcprouter.${servername}.get_config="1"
+	fi
+	#if [ "$current_port" != "$port" ] || [ "$current_cipher" != "$cipher" ]; then
+	if [ "$current_cipher" != "$cipher" ]; then
+		local settings
+		#settings='{"port": '$port', "cipher": "'$cipher'"}'
+		settings='{"cipher": "'$cipher'", "password": "'$key'"}'
+		echo $(_set_json "softethervpn" "$settings")
 	else
 		echo 1
 	fi
@@ -620,6 +647,24 @@ _get_vps_config() {
 		if [ "$(uci -q get dsvpn.vpn.enable)" = "1" ]; then
 			logger -t "OMR-VPS" "Restart DSVPN..."
 			/etc/init.d/dsvpn restart
+		fi
+	fi
+
+	port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	if [ -n "$(uci -q get softethervpn.openmptcprouter)" ] && ([ "$(uci -q get softethervpn.openmptcprouter.host)" != "127.0.0.1" ] && [ "$(uci -q get softethvpn.openmptcprouter.host)" != "$vpsip" ] && [ "$(uci -q get openmptcprouter.settings.ha)" != "1" ]) || [ "$(uci -q get softethervpn.openmptcprouter.port)" != "$port" ]; then
+		uci -q batch <<-EOF >/dev/null
+			set softethervpn.openmptcprouter.port=$port
+			set softethervpn.openmptcprouter.host="$vpsip"
+			commit softethervpn
+		EOF
+		uci -q batch <<-EOF >/dev/null
+			set network.omrvpn.proto='dhcp'
+			commit network
+		EOF
+			
+		if [ "$(uci -q get softethervpn.openmptcprouter.enable)" = "1" ]; then
+			logger -t "OMR-VPS" "Restart SoftEtherVPN..."
+			/etc/init.d/softethervpnclient restart
 		fi
 	fi
 
@@ -2105,6 +2150,30 @@ _set_config_from_vps() {
 		fi
 	fi
 
+	# SoftEtherVPN settings
+	softethervpn_password="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.password')"
+	softethervpn_port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
+	if [ -f /etc/init.d/softethervpnclient ] && [ -n "$(uci -q get softethervpn.openmptcprouter)" ] && ( ([ -n "$softethervpn_password" ] && [ "$softethervpn_password" != "$(uci -q get softethervpn.openmptcprouter.password)" ]) || ([ -n "$softhervpn_port" ] && [ "$softethervpn_port" != "$(uci -q get softethervpn.openmptcprouter.port)" ]) ); then
+		softethervpn_state=0
+		if [ "$vpn" = "softhervpn" ]; then
+			sofethersvpn_state=1
+		fi
+		uci -q batch <<-EOF >/dev/null
+			set softethervpn.openmptcprouter.password=$softethervpn_password
+			set softethervpn.openmptcprouter.enable=$softethervpn_state
+			set softethervpn.openmptcprouter.port=$softethervpn_port
+			commit softethervpn
+		EOF
+		if [ "$(uci -q get softethervpn.openmptcprouter.host)" != "127.0.0.1" ]; then
+			uci -q set softethervpn.openmptcprouter.host="$vpsip"
+		fi
+		if [ -n "$(uci -q changes softethervpn)" ]; then
+			uci -q commit softethervpn
+			logger -t "OMR-VPS" "SoftEther VPN restart..."
+			/etc/init.d/softethervpnclient restart
+		fi
+	fi
+
 	# Shorewall settings
 	shorewall_redirect="$(echo "$vps_config" | jsonfilter -q -e '@.shorewall.redirect_ports')"
 	[ "$shorewall_redirect" = "enable" ] && redirect="1"
@@ -2506,6 +2575,7 @@ _config_service() {
 		([ -n "$(uci -q get glorytun.vpn)" ] || [ -n "$(uci -q get glorytun-udp.vpn)" ]) && [ -z "$(_set_glorytun_vps)" ] && error=1
 		[ -n "$(uci -q get openvpn.omr)" ] && [ -z "$(_set_openvpn_vps)" ] && error=1
 		[ -n "$(uci -q get mlvpn.general)" ] && [ -z "$(_set_mlvpn_vps)" ] && error=1
+		[ -n "$(uci -q get softethervpn.openmptcprouter)" ] && [ -z "$(_set_softethervpn_vps)" ] && error=1
 		_set_vps_firewall
 		[ -n "$(uci -q show network | grep wireguard)" ] && [ -z "$(_set_wireguard_vps)" ] && error=1
 	fi

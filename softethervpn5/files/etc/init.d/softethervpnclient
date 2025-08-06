@@ -1,0 +1,89 @@
+#!/bin/sh /etc/rc.common
+
+START=92
+USE_PROCD=1
+
+EXTRA_COMMANDS="initialize"
+
+start_service() {
+	config_load softethervpn
+	config_get enable openmptcprouter enable
+	[ "$enable" != "1" ] && exit 0
+
+	logger -t 'softethervpn5' "Starting softether client service."
+	
+	[ -d /var/softethervpn ] || mkdir -p -m 0775 /var/softethervpn
+	
+	[ -f /var/softethervpn/hamcore.se2 ] || ln -sf /usr/libexec/softethervpn/hamcore.se2 /var/softethervpn/
+	[ -f /var/softethervpn/lang.config  ] || ln -sf /usr/libexec/softethervpn/lang.config /var/softethervpn/
+	
+	[ -f /var/softethervpn/vpnclient ] || ln -sf /usr/libexec/softethervpn/vpnclient /var/softethervpn/
+	[ -f /var/softethervpn/vpn_client.config ] || ln -sf /usr/libexec/softethervpn/vpn_client.config /var/softethervpn/
+
+	procd_open_instance
+	procd_set_param env LANG=en_US.UTF-8
+	procd_set_param command mptcpize run /var/softethervpn/vpnclient start --foreground
+	procd_set_param respawn
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+	procd_open_instance
+	procd_set_param command /etc/init.d/sofethervpnclient initialize
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+
+}
+
+# Initialize and set SoftEther VPN settings
+initialize() {
+	# Check if SoftEther VPN is available...
+	result=1
+	while ! $(/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD About >/dev/null); do
+	    sleep 1
+	    echo -n '.'
+	done
+
+	# Load configuration
+	config_load softethervpn
+	config_get username openmptcprouter username 'openmptcprouter'
+	config_get password openmptcprouter password
+	config_get host openmptcprouter host
+	config_get port openmptcprouter port
+	config_get compression openmptcprouter compression '0'
+	config_get maxtcp openmptcprouter maxtcp '8'
+	config_get interval openmptcprouter interval '1'
+	config_get ttl openmptcprouter ttl '10'
+	config_get half openmptcprouter half 'yes'
+
+
+	# Check if "openmptcprouter" account exist, if not create it
+	if ! $(/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountGet openmptcprouter >/dev/null); then
+		# If not exist.
+		echo "Create user $username"
+		/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountCreate openmptcprouter /SERVER:$host:$port /HUB:OMRVPN /USERNAME:$username /NICNAME:SoftEther >/dev/null 2>&1
+	fi
+	# Set server and user parameters
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountSet openmptcprouter /SERVER:$host:$port /HUB:OMRVPN  >/dev/null 2>&1
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountUsernameSet openmptcprouter /USERNAME:$username >/dev/null 2>&1
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountPasswordSet openmptcprouter /PASSWORD:$password /TYPE:standard >/dev/null 2>&1
+	# Create Network interface
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD NicCreate SoftEther >/dev/null 2>&1
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountNicSet openmptcprouter /NICNAME:SoftEther >/dev/null 2>&1
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD NicEnable SoftEther >/dev/null 2>&1
+
+	# Set compressioon
+	if [ "$compression" = "1" ]; then
+		/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountCompressEnable openmptcprouter >/dev/null 2>&1
+	else
+		/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountCompressDisable openmptcprouter >/dev/null 2>&1
+	fi
+
+	# Set connection settings
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountDetailSet openmptcprouter /MAXTCP:$maxtcp /INTERVAL:$interval /TTL:$ttl /HALF:$half /BRIDGE:yes /MONITOR:no /NOTRACK:yes /NOQOS:no /DISABLEUDP:yes >/dev/null 2>&1
+
+	# Disconnect/reconnect to be sur to use lastest settings
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountDisconnect openmptcprouter >/dev/null 2>&1
+	sleep 2
+	/usr/bin/vpncmd 127.0.0.1 /CLIENT /CSV /CMD AccountConnect openmptcprouter >/dev/null 2>&1
+}

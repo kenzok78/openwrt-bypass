@@ -40,7 +40,7 @@ MY_DEPENDS := \
     luci-app-omr-tracker luci-app-omr-dscp \
     luci-app-sqm-autorate sqm-scripts-extra \
     luci-app-vnstat2 omr-quota luci-app-omr-quota \
-    luci-app-mptcp luci-app-openmptcprouter luci-app-omr-bypass luci-app-mail luci-app-upnp \
+    luci-app-mptcp luci-app-openmptcprouter luci-app-omr-bypass luci-app-mail \
     luci-app-wol luci-app-opkg \
     luci-app-uhttpd \
     LINUX_5_4:luci-mod-rpc rpcd-mod-rpcsys rpcd-mod-file rpcd-mod-iwinfo \
@@ -96,7 +96,7 @@ MY_DEPENDS := \
     TARGET_mediatek_filogic:kmod-mt7915-firmware TARGET_mediatek_filogic:kmod-mt7916-firmware TARGET_mediatek_filogic:kmod-mt7986-firmware TARGET_mediatek_filogic:kmod-mt7986-wo-firmware TARGET_mediatek_filogic:kmod-mt7996-firmware TARGET_mediatek_filogic:kmod-mt7996-233-firmware TARGET_mediatek_filogic:mt7988-wo-firmware TARGET_mediatek_filogic:mt7988-2p5g-phy-firmware \
     (TARGET_x86||TARGET_x86_64):kmod-r8168 (TARGET_x86||TARGET_x86_64):kmod-r8169 \
     !(TARGET_mt7623||TARGET_ipq806x):luci-app-smartdns logd TARGET_x86_64:kmod-i40e \
-    omr-banudpip
+    omr-banudpip softethervpn5-client luci-app-upnp
 
 #     (TARGET_x86||TARGET_x86_64):luci-app-irqbalance
 

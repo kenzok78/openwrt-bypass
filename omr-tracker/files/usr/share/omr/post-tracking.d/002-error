@@ -281,6 +281,10 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
 			_log "OpenVPN down, restart it"
 			/etc/init.d/openvpn restart omr >/dev/null 2>&1
 		fi
+		if [ "$(uci -q get ethersoftvpn.openmptcprouter.enable)" = "1" ]; then
+			_log "SoftEther VPN down, restart it"
+			/etc/init.d/softethervpnclient restart >/dev/null 2>&1
+		fi
 		config_load openmptcprouter
 		[ "$(uci -q get openmptcprouter.settings.pihole_auto_conf)" != "0" ] && config_foreach disable_pihole server
 		#if [ "$(uci -q get openmptcprouter.settings.master)" != "balancing" ] || [ "$(uci -q get openmptcprouter.settings.vpn)" = "mlvpn" ]; then

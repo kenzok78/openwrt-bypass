@@ -1,0 +1,5 @@
+#!/bin/sh
+[ "$ACTION" = add ] || exit 0
+[ "$INTERFACE" = "vpn_softether" ] || exit 0
+logger -t "SoftEther" "Initialize VPN..."
+/etc/init.d/softethervpnclient initialize 2>&1 >/dev/null

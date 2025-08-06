@@ -1,5 +1,5 @@
 #!/bin/sh /etc/rc.common
-# Copyright (C) 2018-2022 Ycarus (Yannick Chabanois) <ycarus@zugaina.org>
+# Copyright (C) 2018-2025 Ycarus (Yannick Chabanois) <ycarus@zugaina.org>
 # shellcheck disable=SC2039
 # vim: set noexpandtab tabstop=4 shiftwidth=4 softtabstop=4 :
 
@@ -39,6 +39,8 @@ set_ipv6_state() {
 			uci -q batch <<-EOF >/dev/null
 				del_list v2ray.main.inbounds="omr6"
 				commit v2ray
+				del_list xray.main.inbounds="omr6"
+				commit xray
 			EOF
 		fi
 		uci -q batch <<-EOF >/dev/null
@@ -99,6 +101,13 @@ set_ipv6_state() {
 				commit v2ray
 			EOF
 			/etc/init.d/v2ray restart
+		fi
+		if [ "$(uci -q get xray.main.inbounds | grep omr6)" = "" ]; then
+			uci -q batch <<-EOF >/dev/null
+				add_list xray.main.inbounds="omr6"
+				commit xray
+			EOF
+			/etc/init.d/xray restart
 		fi
 		if [ "$(uci -q get omr-tracker.defaults.family)" == "ipv4" ]; then
 			uci -q batch <<-EOF >/dev/null

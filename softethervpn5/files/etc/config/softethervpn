@@ -1,0 +1,8 @@
+config hub 'openmptcprouter'
+	option enable '1'
+	option port '65390'
+	option host '127.0.0.1'
+	option encryption 'aes-256-gcm'
+	option username 'openmptcprouter'
+	option password 'example'
+	option compression '0'

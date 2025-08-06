@@ -53,6 +53,11 @@ if [ -n "$(uci show openmptcprouter | awk -F= '/password/ { gsub("\047","",$2);p
 		/etc/init.d/dsvpn restart >/dev/null 2>&1
 		sleep 5
 	fi
+	if [ "$(pgrep vpnclient)" = "" ] && [ "$(uci -q get softethervpn.openmptcprouter.enable)" = "1" ] && [ -f /etc/init.d/softethervpnclient ]; then
+		_log "Can't find SoftEther VPN, restart it..."
+		/etc/init.d/softethervpnclient restart >/dev/null 2>&1
+		sleep 5
+	fi
 	if [ "$(pgrep -f v2ray)" = "" ] && [ "$(uci -q get v2ray.main.enabled)" = "1" ] && [ -f /etc/init.d/v2ray ]; then
 		_log "Can't find V2Ray, restart it..."
 		/etc/init.d/v2ray restart >/dev/null 2>&1

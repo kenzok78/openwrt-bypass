@@ -626,7 +626,10 @@ local statuslogo = ucic:get("openmptcprouter","settings","statuslogo") or "openm
 					if(zonewan == "NO")
 					{
 						statusMessage += '<%:Network interface not in WAN firewall zone%>' + '<br />';
-						statusMessageClass = "warning";
+						if (statusMessageClass !== "error")
+						{
+							statusMessageClass = "warning";
+						}
 					}
 					if (istatus == 'ERROR' && ipaddr != '' && ipaddr == mArray.wans[i].gateway)
 					{

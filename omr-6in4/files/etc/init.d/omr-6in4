@@ -47,6 +47,11 @@ set_ipv6_state() {
     			set unbound.@unbound[-1].protocol='ip4_only'
 			commit unbound
 		EOF
+		uci -q batch <<-EOF >/dev/null
+			set dhcp.dnsmasq1.filter_aaaa='1'
+			commit dhcp
+		EOF
+		EOF
 		config_load shadowsocks-libev
 		config_foreach set_shadowsocks_address ss_redir "0.0.0.0"
 		config_load shadowsocks-rust
@@ -83,31 +88,45 @@ set_ipv6_state() {
 			set unbound.@unbound[-1].protocol='mixed'
 			commit unbound
 		EOF
-		config_load shadowsocks-libev
-		config_foreach set_shadowsocks_address ss_redir "::"
-		config_load shadowsocks-rust
-		config_foreach set_shadowsocks_rust_address ss_redir "::"
 		uci -q batch <<-EOF >/dev/null
 			commit network
+			delete dhcp.dnsmasq1.filter_aaaa
 			commit dhcp
-			commit shadowsocks-libev
-			commit shadowsocks-rust
 		EOF
-		/etc/init.d/shadowsocks-libev restart
-		/etc/init.d/shadowsocks-rust restart
-		if [ "$(uci -q get v2ray.main.inbounds | grep omr6)" = "" ]; then
+
+		if [ -f /etc/init.d/shadowsocks-libev ]; then
+			config_load shadowsocks-libev
+			config_foreach set_shadowsocks_address ss_redir "::"
 			uci -q batch <<-EOF >/dev/null
-				add_list v2ray.main.inbounds="omr6"
-				commit v2ray
+				commit shadowsocks-libev
 			EOF
-			/etc/init.d/v2ray restart
+			/etc/init.d/shadowsocks-libev restart
 		fi
-		if [ "$(uci -q get xray.main.inbounds | grep omr6)" = "" ]; then
+		if [ -f /etc/init.d/shadowsocks-rust ]; then
+			config_load shadowsocks-rust
+			config_foreach set_shadowsocks_rust_address ss_redir "::"
 			uci -q batch <<-EOF >/dev/null
-				add_list xray.main.inbounds="omr6"
-				commit xray
+				commit shadowsocks-rust
 			EOF
-			/etc/init.d/xray restart
+			/etc/init.d/shadowsocks-rust restart
+		fi
+		if [ -f /etc/init.d/v2ray ]; then
+			if [ "$(uci -q get v2ray.main.inbounds | grep omr6)" = "" ]; then
+				uci -q batch <<-EOF >/dev/null
+					add_list v2ray.main.inbounds="omr6"
+					commit v2ray
+				EOF
+				/etc/init.d/v2ray restart
+			fi
+		fi
+		if [ -f /etc/init.d/xray ]; then
+			if [ "$(uci -q get xray.main.inbounds | grep omr6)" = "" ]; then
+				uci -q batch <<-EOF >/dev/null
+					add_list xray.main.inbounds="omr6"
+					commit xray
+				EOF
+				/etc/init.d/xray restart
+			fi
 		fi
 		if [ "$(uci -q get omr-tracker.defaults.family)" == "ipv4" ]; then
 			uci -q batch <<-EOF >/dev/null

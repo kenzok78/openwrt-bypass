@@ -66,7 +66,7 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
 				sleep $(uci -q get network.$OMR_TRACKER_INTERFACE.delay || echo '120')
 				uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.restart_intf=1
 				uci -q commit openmptcprouter
-			elif [ "$mm_state" = "disabled" ]; then
+			elif [ "$mm_state" = "disabled" ] && [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.force_link)" = "1" ]; then
 			# [ -n "$(echo $modeminfo | grep 'modem.3gpp.registration-state ' | grep home)" ]; then
 				_log "Interface $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE) disabled, set it up"
 				/usr/bin/mmcli -m ${modem} -e >/dev/null 2>&1

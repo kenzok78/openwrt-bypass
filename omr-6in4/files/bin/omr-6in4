@@ -18,6 +18,8 @@ while true; do
 		iface=$(uci -q get mlvpn.general.interface_name)
 	elif [ "$(uci -q get openvpn.omr.enabled)" = "1" ]; then
 		iface=$(uci -q get openvpn.omr.dev)
+	elif [ "$(uci -q get softethervpn.openmptcprouter.enabled)" = "1" ]; then
+		iface="vpn_softether"
 	fi
 	[ -z "$addr" ] && addr=$(ubus call network.interface.omrvpn status | jsonfilter -q -e '@["ipv4-address"][0].address' | tr -d "\n")
 	if [ -n "$iface" ] && [ -d "/sys/class/net/$iface" ] && [ "$(uci -q get openmptcprouter.omrvpn.state)" = "up" ]; then

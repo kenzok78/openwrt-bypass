@@ -77,7 +77,6 @@ HOST_CONFIGURE_ARGS = \
 	--release-channel=stable \
 	--enable-cargo-native-static \
 	--bootstrap-cache-path=$(DL_DIR)/rustc \
-	--set=llvm.download-ci-llvm=false \
 	$(TARGET_CONFIGURE_ARGS)
 
 define Host/Uninstall
@@ -91,6 +90,7 @@ define Host/Compile
 	CARGO_HOME=$(CARGO_HOME) \
 	TARGET_CFLAGS="$(TARGET_CFLAGS)" \
 	$(PYTHON) $(HOST_BUILD_DIR)/x.py \
+		--ci false \
 		--build-dir $(HOST_BUILD_DIR)/build \
 		dist build-manifest rustc rust-std cargo llvm-tools rust-src
 endef
@@ -98,9 +98,7 @@ endef
 define Host/Install
 	( \
 		cd $(HOST_BUILD_DIR)/build/dist ; \
-		for targz in *.tar.gz; do \
-			$(STAGING_DIR_HOST)/bin/libdeflate-gzip -dc "$$$$targz" | tar -xf - ; \
-		done ; \
+		find -iname "*.tar.gz" -exec tar -xzf {} \; ; \
 		find . -mindepth 2 -maxdepth 2 -type f -name install.sh \
 			-execdir bash '{}' --prefix=$(STAGING_DIR)/host --disable-ldconfig \; ; \
 	)

@@ -81,7 +81,7 @@ MY_DEPENDS := \
     luci-app-acl block-mount blockd fstools luci-app-shutdown libwebp luci-proto-gre tcptraceroute luci-proto-mbim luci-app-ttyd luci-mod-dashboard kmod-usb2 libustream-openssl (TARGET_x86||TARGET_x86_64):kmod-ixgbevf (TARGET_x86||TARGET_x86_64):kmod-igbvf \
     hwinfo (TARGET_x86||TARGET_x86_64):dmidecode kmod-bonding luci-proto-bonding luci-app-sysupgrade \
     luci-theme-openwrt-2020 luci-proto-wireguard luci-app-wireguard kmod-crypto-lib-blake2s  \
-    !(LINUX_5_4):mptcpd (TARGET_x86||TARGET_x86_64):kmod-igc !TARGET_mvebu:kmod-mmc-spi kmod-macsec usbutils v2ray-core LINUX_5_4:v2ray-config !LINUX_5_4:v2ray-config-nft \
+    !(LINUX_5_4):mptcpd (TARGET_x86||TARGET_x86_64):kmod-igc !TARGET_mvebu:kmod-mmc-spi kmod-macsec usbutils !TARGET_mt7623:v2ray-core !(LINUX_5_4||TARGET_mt7623):v2ray-config-nft \
     (TARGET_x86||TARGET_x86_64):kmod-mlx4-core \
     !(TARGET_ipq40xx||TARGET_ramips||LINUX_6_6||LINUX_6_10||LINUX_6_11||LINUX_6_12||LINUX_6_15):iptables-mod-ndpi !(TARGET_ipq40xx||TARGET_ramips||LINUX_6_6||LINUX_6_10||LINUX_6_11||LINUX_6_12||LINUX_6_15):kmod-ipt-ndpi libip4tc libip6tc \
     xray-core LINUX_5_4:xray-config !LINUX_5_4:xray-config-nft \
@@ -98,6 +98,7 @@ MY_DEPENDS := \
     !(TARGET_mt7623||TARGET_ipq806x):luci-app-smartdns logd TARGET_x86_64:kmod-i40e \
     omr-banudpip softethervpn5-client luci-app-upnp
 
+# LINUX_5_4:v2ray-config
 #     (TARGET_x86||TARGET_x86_64):luci-app-irqbalance
 
 #    !TARGET_ipq40xx:kmod-rt2800-usb !TARGET_ipq40xx:kmod-rtl8xxxu !TARGET_ipq40xx:kmod-rtl8192cu !TARGET_ipq40xx:kmod-net-rtl8192su (TARGET_x86||TARGET_x86_64):kmod-r8169 (TARGET_x86||TARGET_x86_64):kmod-8139too (TARGET_x86||TARGET_x86_64):kmod-r8125 !TARGET_ipq40xx:kmod-rtl8187 kmod-rtl8xxxu (TARGET_x86||TARGET_x86_64):rtl8192eu-firmware \

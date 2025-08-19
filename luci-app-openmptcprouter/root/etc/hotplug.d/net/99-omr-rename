@@ -14,10 +14,11 @@ _set_intf_name() {
 	config_get device $intfname device
 	config_get modalias $intfname modalias
 	config_get ifname $intfname ifname
-	config_get type $intfname ifname
+	config_get type $intfname type
 	if [ "$type" = "tunnel" ] || [ "$type" = "bridge" ]; then
 		return
 	fi
+	[ -z "$ifname" ] && ifname="$device"
 	[ -n "$modalias" ] && {
 		if [ -f /sys/class/net/${INTERFACE}/device/uevent ]; then
 			mac=""

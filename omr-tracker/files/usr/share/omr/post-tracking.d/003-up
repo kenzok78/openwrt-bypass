@@ -35,6 +35,11 @@ if [ -e "/sys/class/net/$OMR_TRACKER_DEVICE" ] && [ "$(uci -q get network.global
 		*backup*)       multipath_status="backup"   ;;
 		*handover*)     multipath_status="handover" ;;
 	esac
+#	if [ "$(multipath -v $OMR_TRACKER_DEVICE)" = "NOK" ] && [ "$multipath_status" != "off" ]; then
+#		_log "Incorrect MPTCP endpoint configuration, fixing..."
+#		multipath off >/dev/null 2>&1
+#		multipath ${multipath_status} >/dev/null 2>&1
+#	fi
 fi
 
 
@@ -242,7 +247,8 @@ if [ "$multipath_config" = "master" ]; then
 						ip route replace default scope global metric 999 $routesbalancingbackup >/dev/null 2>&1
 					}
 				}
-			elif [ -n "$omrvpn_intf" ] && [ -n "$OMR_TRACKER_DEVICE_IP6" ] && [ "$(ip -6 route show default metric 1 | tr -d '\t' | tr -d '\n' | sed 's/ *$//')" != "default via $routesbalancing6" ]; then
+			fi
+			if [ -n "$omrvpn_intf" ] && [ -n "$OMR_TRACKER_DEVICE_IP6" ] && [ "$(ip -6 route show default metric 1 | tr -d '\t' | tr -d '\n' | sed 's/ *$//')" != "default via $routesbalancing6" ]; then
 				routesbalancing6=""
 				routesbalancingbackup6=""
 				nbintf6=0

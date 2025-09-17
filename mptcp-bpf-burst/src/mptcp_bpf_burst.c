@@ -97,6 +97,8 @@ static int bpf_burst_get_send(struct mptcp_sock *msk,
 		if (!subflow)
 			break;
 
+		backup = subflow->backup || subflow->request_bkup;
+
 		ssk = mptcp_subflow_tcp_sock(subflow);
 		if (!mptcp_subflow_active(subflow))
 			continue;

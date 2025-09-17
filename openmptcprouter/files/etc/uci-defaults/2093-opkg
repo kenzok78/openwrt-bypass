@@ -19,19 +19,19 @@ if [ "$ID" = "openmptcprouter" ]; then
 		EOF
 	elif [ -f /etc/apk/repositories.d/distfeeds.list ]; then
 		cat > "/etc/apk/repositories.d/customfeeds.list" <<-EOF
-		    https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/luci/packages.adb
-		    https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/packages/packages.adb
-		    https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/base/packages.adb
-		    https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/routing/packages.adb
-		    https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/telephony/packages.adb
+https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/luci/packages.adb
+https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/packages/packages.adb
+https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/base/packages.adb
+https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/routing/packages.adb
+https://packages.openmptcprouter.com/${VERSION_ID}/${OPENWRT_ARCH}/telephony/packages.adb
 		EOF
 		TARGET="$(cat /etc/banner | awk '/TARGET/ {print $2}')"
 		cat > "/etc/apk/repositories.d/distfeeds.list" <<-EOF
-		    https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/targets/${OPENWRT_BOARD}/packages/packages.adb
-		    https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/base/packages.adb
-		    https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/luci/packages.adb
-		    https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/openmptcprouter/packages.adb
-		    https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/packages/packages.adb
+https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/targets/${OPENWRT_BOARD}/packages/packages.adb
+https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/base/packages.adb
+https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/luci/packages.adb
+https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/openmptcprouter/packages.adb
+https://download.openmptcprouter.com/release/${VERSION_ID}/${TARGET}/packages/${OPENWRT_ARCH}/packages/packages.adb
 		EOF
 	fi
 fi

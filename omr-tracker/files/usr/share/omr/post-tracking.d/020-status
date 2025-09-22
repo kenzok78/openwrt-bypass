@@ -72,7 +72,7 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 			if [ -n "$previousip" ]; then
 				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (previous: $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.publicip))"
 			else
-				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (First public IP detected)"
+				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (Refresh IP data)"
 			fi
 			uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.publicip="$ipaddr"
 			#/etc/init.d/mptcp enabled && ([ "$OMR_TRACKER_DEVICE_IP" = "$previousip" ] || [ "$OMR_TRACKER_DEVICE_IP" = "$ipaddr" ]) && {

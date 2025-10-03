@@ -11,7 +11,7 @@
 debug=$(uci -q get openmptcprouter.settings.debug)
 
 find_network_device() {
-	local device="${1}"
+	local interface="${1}"
 	local device_section=""
 
 	check_device() {
@@ -25,7 +25,7 @@ find_network_device() {
 	}
 	if [ -n "$device" ]; then
 		config_load network
-		config_foreach check_device device "$(uci -q network.${device}.device)"
+		config_foreach check_device device "$(uci -q network.${interface}.device)"
 	fi
 	echo "${device_section}"
 }
@@ -127,7 +127,7 @@ _set_route_common() {
 	interface_if=$(_get_interface_device "$INTERFACE")
 	interface_current_config=$(uci -q get openmptcprouter.$INTERFACE.state || echo "up")
 	if [ "$multipath_config_route" != "off" ] && [ "$SETROUTE" != true ] && [ "$INTERFACE" != "$PREVINTERFACE" ] && [ "$interface_current_config" = "up" ] && [ "$interface_up" = "true" ]; then
-		interface_gw=$(_get_interface_gateway "$interface" "$ipv6")
+		interface_gw=$(_get_interface_gateway "$INTERFACE" "$ipv6")
 		
 		if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ]; then
 			[ "$debug" = "true" ] && [ "$SETDEFAULT" = "yes" ] && _log "$PREVINTERFACE down. Replace default route by $interface_gw dev $interface_if"
@@ -176,7 +176,7 @@ _set_server_default_route_common() {
 		multipath_config_route=$(_get_multipath_config $INTERFACE)
 
 		if [ -n "$serverip" ] && [ -n "$gateway_var" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ "$multipath_config_route" != "off" ]; then
-			local existing_route=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric 1 | grep "$serverip" | grep "$gateway_var")
+			local existing_route=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric 1 2>/dev/null | grep "$serverip" | grep "$gateway_var")
 			if [ -z "$existing_route" ]; then
 				[ "$debug" = "true" ] && _log "Set server $server ($serverip) default route via $gateway_var"
 				if [ "$($ip_cmd r show $serverip | grep nexthop)" != "" ]; then
@@ -247,7 +247,7 @@ _set_routes_intf_common() {
 	interface_current_config=$(uci -q get openmptcprouter.$INTERFACE.state || echo "up")
 	interface_vpn=$(uci -q get openmptcprouter.$INTERFACE.vpn || echo "0")
 	if { [ "$interface_vpn" = "0" ] || [ "$(uci -q get openmptcprouter.settings.allmptcpovervpn)" = "0" ]; } && [ "$multipath_config_route" != "off" ] && [ "$interface_current_config" = "up" ] && [ "$interface_if" != "" ] && [ "$interface_up" = "true" ]; then
-		interface_gw=$(_get_interface_gateway "$interface" "$ipv6")
+		interface_gw=$(_get_interface_gateway "$INTERFACE" "$ipv6")
 		#if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ] && [ -n "$serverip" ] && [ "$(ip route show $serverip | grep $interface_if)" = "" ]; then
 		if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ] && [ -z "$(echo $interface_gw | grep :)" ]; then
 			if [ "$multipath_config_route" = "master" ]; then
@@ -317,7 +317,7 @@ _set_route_balancing_common() {
 	interface_current_config=$(uci -q get openmptcprouter.$INTERFACE.state || echo "up")
 	interface_vpn=$(uci -q get openmptcprouter.$INTERFACE.vpn || echo "0")
 	if { [ "$interface_vpn" = "0" ] || [ "$(uci -q get openmptcprouter.settings.allmptcpovervpn)" = "0" ]; } && [ "$multipath_config_route" != "off" ] && [ "$interface_current_config" = "up" ] && [ "$interface_up" = "true" ]; then
-		interface_gw=$(_get_interface_gateway "$interface" false)
+		interface_gw=$(_get_interface_gateway "$INTERFACE" false)
 
 		if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ]; then
 			if [ "$(uci -q get network.$INTERFACE.weight)" != "" ]; then
@@ -409,12 +409,12 @@ _set_server_all_routes_common() {
 		config_get disabled $server disabled
 		[ "$disabled" = "1" ] && return
 		#network_get_device interface_if $OMR_TRACKER_INTERFACE
-		interface_if=$(_get_interface_device "$INTERFACE")
+		interface_if=$(_get_interface_device "$OMR_TRACKER_INTERFACE")
 		interface_up=$(ifstatus "$OMR_TRACKER_INTERFACE" 2>/dev/null | jsonfilter -q -e '@["up"]')
 
-		multipath_config_route=$(_get_multipath_config $INTERFACE)
+		multipath_config_route=$(_get_multipath_config $OMR_TRACKER_INTERFACE)
 
-		if [ "$serverip" != "" ] && [ "$OMR_TRACKER_DEVICE_GATEWAY" != "" ] && [ "$multipath_config_route" != "off" ] && [ "$interface_up" = "true" ]; then
+		if [ "$serverip" != "" ] && [ "$gateway_var" != "" ] && [ "$multipath_config_route" != "off" ] && [ "$interface_up" = "true" ]; then
 			eval "${routes_var}=''"
 			eval "${backup_var}=''"
 			eval "${nbintf_var}=0"
@@ -432,14 +432,23 @@ _set_server_all_routes_common() {
 			local current_backup=$(eval "echo \$${backup_var}")
 			local current_nbintf=$(eval "echo \$${nbintf_var}")
 			local current_nbintfb=$(eval "echo \$${nbintfb_var}")
+
+			_normalize_route_safe() {
+				echo "$1" | tr '\t ' '\n' | sed '/^$/d' | sort | tr -d '\n' || true
+			}
+
 			
 			if [ -n "$current_routes" ]; then
 				local uintf=$(echo "$current_routes" | awk '{print $5}')
 				local needs_update=false
 				if [ "$current_nbintf" -gt 1 ]; then
-					local existing_route=$($ip_cmd r show "$serverip" metric 1 | tr -d '\t' | tr -d '\n' | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n')
-					local expected_route=$(echo "$serverip $current_routes" | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n')
-				    [ "$existing_route" != "$expected_route" ] && needs_update=true
+					#local existing_route=$( { $ip_cmd r show "$serverip" metric 1 | tr -d '\t' | tr -d '\n' | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n'; } 2>/dev/null)
+					existing_raw_route=$($ip_cmd r show "$serverip" metric 1 2>/dev/null)
+					local existing_route=$(_normalize_route_safe "$existing_raw_route")
+					#local expected_route=$( { echo "$serverip $current_routes" | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n'; } 2>/dev/null)
+					expected_raw_route="$serverip $current_routes"
+					local expected_route=$(_normalize_route_safe "$expected_raw_route")
+					[ "$existing_route" != "$expected_route" ] && needs_update=true
 				elif [ "$current_nbintf" = 1 ] && [ -n "$uintf" ]; then
 					[ -z "$($ip_cmd r show "$serverip" metric 1 | grep "$uintf")" ] && needs_update=true
 				fi
@@ -461,8 +470,13 @@ _set_server_all_routes_common() {
 				local needs_backup_update=false
 
 				if [ "$current_nbintfb" -gt 1 ]; then
-					local existing_backup=$($ip_cmd r show "$serverip" metric 999 | tr -d '\t' | tr -d '\n' | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n')
-					local expected_backup=$(echo "$serverip $current_backup" | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n')
+					#local existing_backup=$( { $ip_cmd r show "$serverip" metric 999 | tr -d '\t' | tr -d '\n' | sed 's/ *$//' | tr ' ' '\n' | sort | tr -d '\n'; } 2>/dev/null)
+					existing_raw_backup=$($ip_cmd r show "$serverip" metric 999 2>/dev/null)
+					local existing_backup=$(_normalize_route_safe "$existing_raw_backup")
+					#local expected_backup=$( { echo "$serverip $current_backup" | sed 's/ *$//' | tr ' ' '\n' | sort 2>/dev/null | tr -d '\n'; } 2>/dev/null)
+					expected_raw_backup="$serverip $current_backup"
+					local expected_backup=$(_normalize_route_safe "$expected_raw_backup")
+
 					[ "$existing_backup" != "$expected_backup" ] && needs_backup_update=true
 				elif [ "$current_nbintfb" = 1 ] && [ -n "$uintfb" ]; then
 					[ -z "$($ip_cmd r show "$serverip" metric 999 | grep "$uintfb")" ] && needs_backup_update=true
@@ -527,7 +541,7 @@ _set_server_route_common() {
 		[ -z "$interface_current_config" ] && interface_current_config="up"
 
 		if [ -n "$serverip" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$gateway_var" ] && [ "$multipath_config_route" != "off" ] && [ "$interface_current_config" = "up" ] && [ "$interface_up" = "true" ]; then
-			local existing_route=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric "$metric" | grep "$serverip" | grep "$gateway_var")
+			local existing_route=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric "$metric" 2>/dev/null | grep "$serverip" | grep "$gateway_var")
 			if [ -z "$existing_route" ]; then
 				[ "$debug" = "true" ] && _log "Set server $server ($serverip) route via $gateway_var metric $metric"
 				$ip_cmd route replace "$serverip" via "$gateway_var" dev "$OMR_TRACKER_DEVICE" metric "$metric" $initcwrwnd >/dev/null 2>&1
@@ -546,7 +560,7 @@ _set_server_route_common() {
 	local metric=$(uci -q get "network.${OMR_TRACKER_INTERFACE}.metric")
 
 	if [ "$default_gw_enabled" != "0" ] && [ -n "$metric" ] && [ -n "$gateway_var" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ "$multipath_config_route" != "off" ] && [ "$interface_current_config" = "up" ] && [ "$interface_up" = "true" ]; then
-		local existing_default=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric "$metric" | grep default | grep "$gateway_var")
+		local existing_default=$($ip_cmd route show dev "$OMR_TRACKER_DEVICE" metric "$metric" 2>/dev/null | grep default | grep "$gateway_var")
 		if [ -z "$existing_default" ]; then
 			$ip_cmd route replace default via "$gateway_var" dev "$OMR_TRACKER_DEVICE" metric "$metric" $initcwrwnd >/dev/null 2>&1
 		fi
@@ -562,9 +576,25 @@ set_server_route6() {
 }
 
 
-del_default_route() {
+_del_default_route_common() {
+	local server="$1"
+	local ipv6="${2:-false}"
+	local ip_cmd
+
 	[ -z "$OMR_TRACKER_DEVICE" ] && return
-	ip route del default dev $OMR_TRACKER_DEVICE >/dev/null 2>&1
+	if [ "$ipv6" = "true" ]; then
+		ip_cmd="ip -6"
+	else
+		ip_cmd="ip"
+	fi
+	${ip_cmd} route del default dev $OMR_TRACKER_DEVICE >/dev/null 2>&1
+}
+
+del_default_route() {
+    _del_default_route_common "$1" false
+}
+del_default_route6() {
+    _del_default_route_common "$1" true
 }
 
 _del_server_route_common() {
@@ -597,9 +627,9 @@ _del_server_route_common() {
 			fi
 
 			# Try to delete route with metric first, then without
-			[ -n "$metric" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$($ip_cmd route show "$serverip" dev "$OMR_TRACKER_DEVICE" metric "$metric")" ] && $ip_cmd route del "$serverip" dev "$OMR_TRACKER_DEVICE" metric "$metric" >/dev/null 2>&1
+			[ -n "$metric" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$($ip_cmd route show "$serverip" dev "$OMR_TRACKER_DEVICE" metric "$metric" 2>/dev/null)" ] && $ip_cmd route del "$serverip" dev "$OMR_TRACKER_DEVICE" metric "$metric" >/dev/null 2>&1
 
-			[ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$($ip_cmd route show "$serverip" dev "$OMR_TRACKER_DEVICE")" ] && $ip_cmd route del "$serverip" dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
+			[ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$($ip_cmd route show "$serverip" dev "$OMR_TRACKER_DEVICE" 2>/dev/null)" ] && $ip_cmd route del "$serverip" dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
 
 			[ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$($ip_cmd route show "$serverip" | grep "$OMR_TRACKER_DEVICE")" ] && $ip_cmd route del "$serverip" dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
 		fi
@@ -607,9 +637,9 @@ _del_server_route_common() {
 	config_list_foreach "$server" ip remove_route
 	# Remove default route
 	if [ -n "$gateway_var" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
-		[ -n "$($ip_cmd route show default via "$gateway_var" dev "$OMR_TRACKER_DEVICE")" ] && $ip_cmd route del default via "$gateway_var" dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
+		[ -n "$($ip_cmd route show default via "$gateway_var" dev "$OMR_TRACKER_DEVICE" 2>/dev/null)" ] && $ip_cmd route del default via "$gateway_var" dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
 	elif [ -n "$OMR_TRACKER_DEVICE" ]; then 
-		[ -n "$($ip_cmd route show default dev "$OMR_TRACKER_DEVICE")" ] && $ip_cmd route del default dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
+		[ -n "$($ip_cmd route show default dev "$OMR_TRACKER_DEVICE" 2>/dev/null)" ] && $ip_cmd route del default dev "$OMR_TRACKER_DEVICE" >/dev/null 2>&1
 	fi
 }
 

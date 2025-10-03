@@ -139,7 +139,7 @@ if [ "$OMR_TRACKER_STATUS" = "ERROR" ] || { [ "$OMR_TRACKER_INTERFACE" != "omrvp
 #	[ "$OMR_TRACKER_INTERFACE" = "omrvpn" ] && multipath $OMR_TRACKER_DEVICE off >/dev/null 2>&1
 #	[ "$OMR_TRACKER_INTERFACE" = "omr6in4" ] && multipath $OMR_TRACKER_DEVICE off >/dev/null 2>&1
 	if [ -e "/sys/class/net/$OMR_TRACKER_DEVICE" ]; then
-		case "$(multipath "$OMR_TRACKER_DEVICE")" in
+		case "$(multipath "$OMR_TRACKER_DEVICE" 2>/dev/null)" in
 			*default*)      multipath_status="on"       ;;
 			*backup*)       multipath_status="backup"   ;;
 			*handover*)     multipath_status="handover" ;;

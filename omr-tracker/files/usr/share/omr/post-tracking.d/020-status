@@ -87,7 +87,7 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 
 		# Routing loop detection
 		lanip="$(uci -q get network.lan.ipaddr)"
-		masterip
+		masterip=""
 		get_master_ip() {
 			if [ -n "$1" ] && [ "$(uci -q get openmptcprouter.$1.multipath)" = "master" ]; then
 				masterip="$(uci -q get openmptcprouter.$1.publicip)"
@@ -126,10 +126,8 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 				}
 				#if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ "$(uci -q get glorytun.vpn.enable)" != "1" ] && [ "$(uci -q get glorytun-udp.vpn.enable)" != "1" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
 				if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
-					if [ -n "$(uci -q get network.$(find_network_device ${OMR_TRACKER_INTERFACE}).mtu)" ]; then
-						network_device=$(find_network_device ${OMR_TRACKER_INTERFACE})
-						mtu=""
-						[ -n "$network_device" ] && mtu=$(uci -q get network.${network_device}.mtu)
+					if [ -n "$(uci -q get network.${OMR_TRACKER_INTERFACE}.mtu)" ]; then
+						mtu="$(uci -q get network.${OMR_TRACKER_INTERFACE}.mtu)"
 						[ -n "$mtu" ] && {
 							uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mtu=$mtu
 							ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1

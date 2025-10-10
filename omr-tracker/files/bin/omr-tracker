@@ -96,12 +96,16 @@ _post_tracking() {
 			_log() {
 				logger -t "post-tracking-${tracker_bin##*/}" "$*"
 			}
-			. "$tracker_bin" 2>&1
+			#. "$tracker_bin" 2>&1
 			#tmp=$(mktemp)
 			#. "$tracker_bin" 2>&1 > "$tmp"
 			#trackresult=$(< "$tmp")
 			#[ -n "$trackresult" ] && _log $trackresult
 			#rm -f "$tmp"
+			EVAL_OUTPUT=$(. "$tracker_bin" 2>&1)
+			if [ -n "$EVAL_OUTPUT" ]; then
+				eval "$EVAL_OUTPUT" >/dev/null 2>&1
+			fi
 		)
 	done
 }

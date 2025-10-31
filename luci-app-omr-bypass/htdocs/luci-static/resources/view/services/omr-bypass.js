@@ -70,6 +70,14 @@ return L.view.extend({
 		o.default = 'ipv4ipv6';
 		o.modalonly = true
 
+		o = s.option(form.ListValue, 'proto', _('protocol'));
+		o.default = 'all';
+		o.rmempty = false;
+		o.value('all');
+		o.value('tcp');
+		o.value('udp');
+		o.modalonly = true
+
 		o = s.option(form.Flag, 'noipv6', _('Disable AAAA IPv6 DNS'));
 		o.default = o.enabled;
 		o.modalonly = true
@@ -86,6 +94,14 @@ return L.view.extend({
 		o.rmempty = false;
 
 		o = s.option(form.Flag, 'vpn', _('VPN on server'),_('Bypass using VPN configured on server.'));
+		o.modalonly = true
+
+		o = s.option(form.ListValue, 'proto', _('protocol'));
+		o.default = 'all';
+		o.rmempty = false;
+		o.value('all');
+		o.value('tcp');
+		o.value('udp');
 		o.modalonly = true
 
 		o = s.option(widgets.DeviceSelect, 'interface', _('Output interface'),_('When none selected, MPTCP master interface is used.'));
@@ -284,6 +300,14 @@ return L.view.extend({
 		o.value('ipv4', _('IPv4 only'));
 		o.value('ipv6', _('IPv6 only'));
 		o.default = 'ipv4ipv6';
+		o.modalonly = true
+
+		o = s.option(form.ListValue, 'proto', _('protocol'));
+		o.default = 'all';
+		o.rmempty = false;
+		o.value('all');
+		o.value('tcp');
+		o.value('udp');
 		o.modalonly = true
 
 		o = s.option(form.Flag, 'noipv6', _('Disable AAAA IPv6 DNS'));

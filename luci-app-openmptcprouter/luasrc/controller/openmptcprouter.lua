@@ -1327,6 +1327,12 @@ function wizard_add()
 	ucic:save("openvpn")
 	ucic:commit("openvpn")
 
+	if default_vpn == "none" then
+		ucic:set("omr-tracker","omrvpn","enabled",0)
+	else
+		ucic:set("omr-tracker","omrvpn","enabled",1)
+	end
+
 	ucic:save("v2ray")
 	ucic:commit("v2ray")
 	ucic:save("xray")

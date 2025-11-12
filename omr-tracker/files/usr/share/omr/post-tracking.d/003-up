@@ -43,8 +43,8 @@ if [ -e "/sys/class/net/$OMR_TRACKER_DEVICE" ] && [ "$(uci -q get network.global
 fi
 
 
-default_gw=$(ip route get 1.1.1.1 2>/dev/null | awk '/via/ {print $3}' || ip route show default | awk '/default/ {print $3}')
-default_gw6=$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '/via/ {print $3}' || ip -6 route show default | awk '/default/ {print $3}')
+default_gw=$(ip route get 1.1.1.1 2>/dev/null | awk '/via/ {print $3}' || ip route show default metric 0 | awk '/default/ {print $3}')
+default_gw6=$(ip -6 route get 2606:4700:4700::1111 2>/dev/null | awk '/via/ {print $3}' || ip -6 route show default metric 0 | awk '/default/ {print $3}')
 #current_interface_gw=$(uci -q get "network.$OMR_TRACKER_INTERFACE.gateway")
 
 
@@ -104,8 +104,8 @@ if [ "$OMR_TRACKER_INTERFACE" = "glorytun" ] || [ "$OMR_TRACKER_INTERFACE" = "om
 		#if [ "$(uci -q get glorytun.vpn.enable)" != "1" ] || [ "$(uci -q get glorytun-udp.vpn.enable)" != "1" ]; then
 			OMR_NETWORK_DEVICE=$(find_network_device ${OMR_TRACKER_INTERFACE})
 			#_log "OMR_NETWORK_DEVICE: $OMR_NETWORK_DEVICE for $OMR_TRACKER_DEVICE - $OMR_TRACKER_INTERFACE"
-			if [ -n "$OMR_NETWORK_DEVICE" ] && [ -n "$(uci -q get network.$OMR_NETWORK_DEVICE.mtu)" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
-				mtu=$(uci -q get network.$OMR_NETWORK_DEVICE.mtu)
+			if [ -n "$OMR_NETWORK_DEVICE" ] && [ -n "$(uci -q get network.$OMR_NETWORK_DEVICE.mtu)" ] && [ -n "$OMR_TRACKER_INTERFACE" ]; then
+				mtu=$(uci -q get network.${OMR_NETWORK_INTERFACE}.mtu)
 				uci -q set openmptcprouter.${OMR_TRACKER_INTERFACE}.mtu=$mtu
 				[ -n "$mtu" ] && [ "$(ip --json link show dev eth3 | jsonfilter -e '@[0].mtu' | tr -d '\n')" != "$mtu" ] && ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
 				uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(date +"%s")

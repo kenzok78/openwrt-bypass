@@ -298,7 +298,7 @@ inbound_section_validate() {
 		's_trojan_disable_insecure_encryption:bool:0' \
 		's_socks_client_id:string' \
 		's_socks_client_email:string:"openmptcprouter"' \
-		'ss_network:or("tcp", "kcp", "ws", "http", "domainsocket", "quic")' \
+		'ss_network:or("tcp", "kcp", "ws", "http", "domainsocket", "quic", "grpc", "xhttp")' \
 		'ss_security:or("none", "tls")' \
 		'ss_tls_server_name:host' \
 		'ss_tls_alpn:string' \
@@ -408,7 +408,7 @@ outbound_section_validate() {
 		's_socks_port:port' \
 		's_socks_user_id:string' \
 		's_socks_email:string:openmptcprouter' \
-		'ss_network:or("tcp", "kcp", "ws", "http", "domainsocket", "quic")' \
+		'ss_network:or("tcp", "kcp", "ws", "http", "domainsocket", "quic", "grpc", "xhttp")' \
 		'ss_security:or("none", "tls")' \
 		'ss_tls_server_name:host' \
 		'ss_tls_alpn:string' \

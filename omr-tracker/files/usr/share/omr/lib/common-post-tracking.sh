@@ -250,7 +250,11 @@ _set_routes_intf_common() {
 		interface_gw=$(_get_interface_gateway "$INTERFACE" "$ipv6")
 		#if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ] && [ -n "$serverip" ] && [ "$(ip route show $serverip | grep $interface_if)" = "" ]; then
 		if [ "$interface_gw" != "" ] && [ "$interface_if" != "" ] && [ -z "$(echo $interface_gw | grep :)" ]; then
-			if [ "$multipath_config_route" = "master" ]; then
+			if [ "$(uci -q get network.$INTERFACE.weight)" != "" ]; then
+				weight=$(uci -q get network.$INTERFACE.weight)
+			elif [ "$(uci -q get openmptcprouter.$INTERFACE.weight)" != "" ]; then
+				weight=$(uci -q get openmptcprouter.$INTERFACE.weight)
+			elif [ "$multipath_config_route" = "master" ]; then
 				weight=100
 			else
 				weight=1

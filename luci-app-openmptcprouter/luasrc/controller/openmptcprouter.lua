@@ -1155,6 +1155,12 @@ function wizard_add()
 	ucic:save("xray")
 	ucic:commit("xray")
 
+	local xray_transport = luci.http.formvalue("xray_transport") or "tcp"
+	ucic:set("xray","omrout","ss_network",xray_transport)
+	ucic:save("xray")
+	ucic:commit("xray")
+
+
 	ucic:save("shadowsocks-libev")
 	ucic:commit("shadowsocks-libev")
 	ucic:save("shadowsocks-rust")

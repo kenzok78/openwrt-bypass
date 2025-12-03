@@ -416,6 +416,7 @@ _set_xray_server_vps() {
 	userid=$(uci -q get xray.omrout.s_vless_user_id)
 	protocol=$(uci -q get xray.omrout.protocol)
 	ss_method=$(uci -q get xray.omrout.s_shadowsocks_method)
+	transport=$(uci -q get xray.omrout.ss_network)
 	if [ "$protocol" = "vless-reality" ] && [ "$enabled" = "1" ]; then
 		vless_reality='true'
 	else
@@ -427,10 +428,11 @@ _set_xray_server_vps() {
 	current_userid="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.key')"
 	current_vlessreality="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.vless_reality')"
 	current_method="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.ss_method')"
+	current_transport="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.ss_network')"
 
-	if [ "$current_userid" != "$userid" ] || [ "$current_vlessreality" != "$vless_reality" ] || [ "$current_method" != "$ss_method" ]; then
+	if [ "$current_userid" != "$userid" ] || [ "$current_vlessreality" != "$vless_reality" ] || [ "$current_method" != "$ss_method" ] || [ "$current_transport" != "$transport" ]; then
 		local settings
-		settings='{"userid": "'$userid'","vless_reality": '$vless_reality',"ss_method": "'$ss_method'"}'
+		settings='{"userid": "'$userid'","vless_reality": '$vless_reality',"ss_method": "'$ss_method'","transport": "'$transport'"}'
 		echo $(_set_json "xray" "$settings")
 	fi
 }
@@ -1905,9 +1907,10 @@ _set_config_from_vps() {
 	xray_key="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.key')"
 	xray_sskey="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.sskey')"
 	xray_vless_reality_key="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.vless_reality_key')"
+	xray_transport="$(echo "$vps_config" | jsonfilter -q -e '@.xray.config.transport')"
 	#v2ray_port="$(echo "$vps_config" | jsonfilter -q -e '@.v2ray.config.port')"
 	xray_port="65248"
-	if [ -n "$(uci -q get xray.omr)" ] && ( ([ -n "$xray_key" ] && [ "$xray_key" != "$(uci -q get xray.omrout.s_vmess_user_id)" ]) || ([ -n "$xray_port" ] && [ "$xray_port" != "$(uci -q get xray.omrout.s_vmess.port)" ]) ); then
+	if [ -n "$(uci -q get xray.omr)" ] && ( ([ -n "$xray_key" ] && [ "$xray_key" != "$(uci -q get xray.omrout.s_vmess_user_id)" ]) || ([ -n "$xray_port" ] && [ "$xray_port" != "$(uci -q get xray.omrout.s_vmess.port)" ]) || ([ -n "$xray_transport" ] && [ "$xray_transport" != "$(uci -q get xray.omrout.ss_network)" ])); then
 		uci -q batch <<-EOF >/dev/null
 			set xray.omrout.s_shadowsocks_port="$((xray_port+4))"
 			set xray.omrout.s_shadowsocks_password="$xray_sskey"
@@ -1921,6 +1924,7 @@ _set_config_from_vps() {
 			set xray.omrout.s_vless_port="$xray_port"
 			set xray.omrout.s_vless_reality_user_id="$xray_key"
 			set xray.omrout.s_vless_reality_public_key="$xray_vless_reality_key"
+			set xray.omrout.ss_network="$xray_transport"
 		EOF
 		#uci -q set xray.omrout.s_shadowsocks_password=$xray_sskey
 		if [ "$(uci -q get xray.omrout.s_vmess_address)" != "127.0.0.1" ]; then

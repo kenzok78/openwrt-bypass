@@ -363,7 +363,17 @@
 			<%:When proxy V2Ray/XRay VLESS, VMESS or Trojan is used, use it for UDP%>
 		    </div>
 		</div>
-    	    </div>
+	    </div>
+	    <div class="cbi-value">
+		<label class="cbi-value-title"><%:XRay Transport%></label>
+		<div class="cbi-value-field">
+		    <select class="cbi-input-select" name="xray_transport" size="1">
+			<option value="tcp" <% if uci:get("xray","omrout","ss_network") == "tcp" then %>selected="selected"<% end %>>TCP</option>
+			<option value="grpc" <% if uci:get("xray","omrout","ss_network") == "grpc" then %>selected="selected"<% end %>>gRPC</option>
+			<option value="xhttp" <% if uci:get("xray","omrout","ss_network") == "xhttp" then %>selected="selected"<% end %>>XHTTP</option>
+		    </select>
+		</div>
+	    </div>
 	    <% end %>
 	    <div class="cbi-value">
 		<label class="cbi-value-title"><%:Encryption%></label>

@@ -5,12 +5,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=rust
-PKG_VERSION:=1.91.0
+PKG_VERSION:=1.91.1
 PKG_RELEASE:=1
 
 PKG_SOURCE:=rustc-$(PKG_VERSION)-src.tar.gz
 PKG_SOURCE_URL:=https://static.rust-lang.org/dist/
-PKG_HASH:=327f528151753013f0a2b2c7f48955a033d718f269a4bc586314d675d0d43e8a
+PKG_HASH:=38dce205d39f61571261f0444237a1ce9efecb970e760d8ec4d957af5b445723
 HOST_BUILD_DIR:=$(BUILD_DIR)/host/rustc-$(PKG_VERSION)-src
 
 PKG_MAINTAINER:=Luca Barbato <lu_zero@luminem.org>
@@ -32,7 +32,7 @@ define Package/rust
   SUBMENU:=Rust
   TITLE:=Rust Programming Language Compiler
   URL:=https://www.rust-lang.org/
-  DEPENDS:=$(RUST_ARCH_DEPENDS)
+  DEPENDS:=$(RUST_ARCH_DEPENDS) +zlib-dev +zlib
 endef
 
 define Package/rust/description

@@ -2135,6 +2135,7 @@ _set_config_from_vps() {
 	dsvpn_port="$(echo "$vps_config" | jsonfilter -q -e '@.dsvpn.port')"
 	if [ -f /etc/init.d/dsvpn ] && [ -n "$(uci -q get dsvpn.vpn)" ] && ( ([ -n "$dsvpn_key" ] && [ "$dsvpn_key" != "$(uci -q get dsvpn.vpn.key)" ]) || ([ -n "$dsvpn_port" ] && [ "$dsvpn_port" != "$(uci -q get dsvpn.vpn.port)" ]) ); then
 		dsvpn_state=0
+		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		if [ "$vpn" = "dsvpn" ]; then
 			dsvpn_state=1
 		fi
@@ -2159,6 +2160,7 @@ _set_config_from_vps() {
 	softethervpn_port="$(echo "$vps_config" | jsonfilter -q -e '@.softethervpn.port')"
 	if [ -f /etc/init.d/softethervpnclient ] && [ -n "$(uci -q get softethervpn.openmptcprouter)" ] && ( ([ -n "$softethervpn_password" ] && [ "$softethervpn_password" != "$(uci -q get softethervpn.openmptcprouter.password)" ]) || ([ -n "$softhervpn_port" ] && [ "$softethervpn_port" != "$(uci -q get softethervpn.openmptcprouter.port)" ]) ); then
 		softethervpn_state=0
+		vpn="$(uci -q get openmptcprouter.settings.vpn)"
 		if [ "$vpn" = "softhervpn" ]; then
 			sofethersvpn_state=1
 		fi

@@ -183,19 +183,19 @@ _bypass_domain() {
 		fi
 		if [ "$(uci -q get dhcp.omr_dst_bypass_${intf}.domain | sed 's/ /\n/g' | grep $domain)" = "" ]; then
 			uci -q add_list dhcp.omr_dst_bypass_${intf}.domain="$domain"
-			uci -q set firewall.omr_dst_bypass_${type}_4.enabled='1'
-			for zone in $(_get_firewall_zones); do
-				uci -q set firewall.omr_dst_bypass_${type}_dstip_4_${zone}.enabled='1'
-				uci -q set firewall.omr_dst_bypass_${type}_dstip_4_accept_${zone}.enabled='1'
-			done
-			if [ "$noipv6" != "1" ]; then
-				uci -q set firewall.omr_dst_bypass_${type}_6.enabled='1'
-				for zone in $(_get_firewall_zones); do
-					uci -q set firewall.omr_dst_bypass_${type}_dstip_6_${zone}.enabled='1'
-					uci -q set firewall.omr_dst_bypass_${type}_dstip_6_accept_${zone}.enabled='1'
-				done
-			fi
+			uci -q set firewall.omr_dst_bypass_${intf}_4.enabled='1'
 			add_domains="true"
+		fi
+		for zone in $(_get_firewall_zones); do
+			uci -q set firewall.omr_dst_bypass_${intf}_dstip_4_${zone}.enabled='1'
+			uci -q set firewall.omr_dst_bypass_${intf}_dstip_4_accept_${zone}.enabled='1'
+		done
+		if [ "$noipv6" != "1" ]; then
+			uci -q set firewall.omr_dst_bypass_${intf}_6.enabled='1'
+			for zone in $(_get_firewall_zones); do
+				uci -q set firewall.omr_dst_bypass_${intf}_dstip_6_${zone}.enabled='1'
+				uci -q set firewall.omr_dst_bypass_${intf}_dstip_6_accept_${zone}.enabled='1'
+			done
 		fi
 		if [ "$(uci -q get dhcp.@dnsmasq[0].noipv6 | grep /$domain/)" = "" ] && [ "$noipv6" = "1" ]; then
 			uci -q add_list dhcp.@dnsmasq[0].noipv6="$domain"
@@ -949,12 +949,14 @@ _intf_rule() {
 			EOF
 		fi
 		uci -q batch <<-EOF
+			delete dhcp.omr_dst_bypass_$intf
 			set dhcp.omr_dst_bypass_$intf=ipset
 			add_list dhcp.omr_dst_bypass_$intf.name="omr_dst_bypass_${intf}_4"
 			add_list dhcp.omr_dst_bypass_$intf.name="omr_dst_bypass_${intf}_6"
 		EOF
 		for tcpudp in tcp udp; do
 			uci -q batch <<-EOF
+				delete dhcp.omr_dst_bypass_$intf_${tcpudp}
 				set dhcp.omr_dst_bypass_$intf_${tcpudp}=ipset
 				add_list dhcp.omr_dst_bypass_$intf_${tcpudp}.name="omr_dst_bypass_${intf}_4_${tcpudp}"
 				add_list dhcp.omr_dst_bypass_$intf_${tcpudp}.name="omr_dst_bypass_${intf}_6_${tcpudp}"

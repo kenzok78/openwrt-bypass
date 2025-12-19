@@ -1,6 +1,6 @@
 #
 # Copyright (C) 2014 OpenWrt.org
-# Copyright (C) 2023 Yannick Chabanois (Ycarus) for OpenMPTCProuter
+# Copyright (C) 2023-2025 Yannick Chabanois (Ycarus) for OpenMPTCProuter
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -15,8 +15,8 @@ PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/$(PKG_NAME)/$(PKG_NAME).git
-PKG_SOURCE_VERSION:=277d4574c10bb8e16ab6ab3f38b8e1cb6cd6c678
-PKG_VERSION:=1.14.20241010
+PKG_SOURCE_VERSION:=08644db02d43478f802755903212f5ee506af73b
+PKG_VERSION:=1.14.20251103
 PKG_LICENSE:=GPL-2.0
 PKG_LICENSE_FILES:=COPYING
 

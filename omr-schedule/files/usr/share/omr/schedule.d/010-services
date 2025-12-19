@@ -343,6 +343,8 @@ if [ "$(uci -q get openmptcprouter.latest_versions.lc)" = "" ] || [ $(($(date +"
 		_log "Restart OMR-ByPass due to firewall error"
 		/etc/init.d/omr-bypass restart >/dev/null 2>&1
 	}
+	_log "Reload OMR-ByPass rules to refresh IPs"
+	/etc/init.d/omr-bypass reload_rules >/dev/null 2>&1
 fi
 
 # Remove old hidden config files

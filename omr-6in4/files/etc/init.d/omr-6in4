@@ -149,7 +149,7 @@ set_ipv6_state_intf() {
 	local intf="$1"
 	config_get ip4table $intf ip4table
 	config_get ipv6 $intf ipv6 "0"
-	if [ "$ip4table" = "lan" ]; then
+	if [ "$ip4table" = "lan" ] || [ "$ip4table" = "9999" ]; then
 		if [ "$disable_ipv6" = "1" ] && [ "$ipv6" != "0" ]; then
 			logger -t "omr-6in4" "Disable IPv6 on ${intf}"
 			uci -q batch <<-EOF >/dev/null

@@ -35,7 +35,7 @@ MY_DEPENDS := \
     !LINUX_5_4:nftables-json !LINUX_5_4:iptables-nft !LINUX_5_4:kmod-nft-connlimit !LINUX_5_4:kmod-nft-offload \
     wireless-tools \
     libiwinfo-lua \
-    ca-bundle ca-certificates \
+    ca-bundle \
     luci-mod-admin-full luci-app-firewall luci-app-glorytun-tcp luci-app-glorytun-udp luci-app-shadowsocks-libev luci-app-unbound luci-theme-openmptcprouter luci-theme-argon luci-theme-alpha luci-theme-design luci-base luci-theme-material luci-theme-bootstrap \
     luci-app-omr-tracker luci-app-omr-dscp \
     luci-app-sqm-autorate sqm-scripts-extra \
@@ -92,12 +92,13 @@ MY_DEPENDS := \
     (LINUX_5_4&&(TARGET_x86_64||TARGET_aarch64)):kmod-tcp-bbr2 \
     TARGET_x86_64:kmod-atlantic \
     !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-minrtt !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-bkup !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-burst !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-first !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-red !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):mptcp-bpf-rr !(LINUX_5_4||LINUX_6_1||TARGET_ramips||TARGET_ipq806x):bpftool-full \
-    kmod-ovpn-dco-v2 pciutils \
+    !LINUX_6_18:kmod-ovpn-dco-v2 pciutils \
     TARGET_mediatek_filogic:kmod-mt7915-firmware TARGET_mediatek_filogic:kmod-mt7916-firmware TARGET_mediatek_filogic:kmod-mt7986-firmware TARGET_mediatek_filogic:kmod-mt7986-wo-firmware TARGET_mediatek_filogic:kmod-mt7996-firmware TARGET_mediatek_filogic:kmod-mt7996-233-firmware TARGET_mediatek_filogic:mt7988-wo-firmware TARGET_mediatek_filogic:mt7988-2p5g-phy-firmware \
     (TARGET_x86||TARGET_x86_64):kmod-r8169 \
     !(TARGET_mt7623||TARGET_ipq806x):luci-app-smartdns logd TARGET_x86_64:kmod-i40e \
-    omr-banudpip luci-app-upnp
+    omr-banudpip luci-app-upnp kmod-inet-diag
 
+# kmod-ovpn-dco-v2
 # kmod-swconfig swconfig
 # Disable softehervpn for now
 #    softethervpn5-client

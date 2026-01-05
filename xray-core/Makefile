@@ -22,6 +22,10 @@ PKG_BUILD_DEPENDS:=golang/host
 PKG_BUILD_PARALLEL:=1
 
 GO_PKG:=github.com/XTLS/Xray-core
+GO_PKG_BUILD_PKG:=github.com/xtls/xray-core/main
+GO_PKG_LDFLAGS_X:= \
+    $(GO_PKG)/core.build=OpenWrt \
+    $(GO_PKG)/core.version=$(PKG_VERSION)
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/openmptcprouter/golang/golang-package.mk
@@ -35,7 +39,7 @@ endef
 
 define Package/$(PKG_NAME)-core
 	$(call Package/$(PKG_NAME)/template)
-	PROVIDES:=xray-core
+#	PROVIDES:=xray-core
 endef
 
 define Package/$(PKG_NAME)-config

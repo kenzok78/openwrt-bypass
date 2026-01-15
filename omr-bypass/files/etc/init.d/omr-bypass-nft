@@ -637,6 +637,11 @@ _intf_rules_all_rules() {
 	if [ -z "$proxyproto" ]; then
 		cat >> /etc/firewall.omr-bypass <<-EOF
 			nft add chain inet fw4 noproxy_local_out { type nat hook output priority filter - 1; policy accept; } 2>&1 >/dev/null
+			nft add chain inet fw4 noproxy_pre_tcp { type nat hook output priority filter - 1; policy accept; } 2>&1 >/dev/null
+		EOF
+	elif [ "$(uci -q get v2ray.main_enabled)" = "1" ] || [ "$(uci -q get xray.main_enabled)" = "1" ]; then
+		cat >> /etc/firewall.omr-bypass <<-EOF
+			nft add chain inet fw4 ${proxyproto}_pre_tcp { type nat hook prerouting priority filter + 1; policy accept; } 2>&1 >/dev/null
 		EOF
 	fi
 	if [ "$proto" = "tcp" ] || [ "$proto" = "tcp udp" ]; then

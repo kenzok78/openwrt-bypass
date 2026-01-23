@@ -1,0 +1,62 @@
+diff --git a/src/Makefile b/src/Makefile
+index cdb7f65..ed24ed5 100644
+--- a/src/Makefile
++++ b/src/Makefile
+@@ -124,7 +124,7 @@ $(OPATH):
+    mkdir $(OPATH)
+ 
+ analyze: $(BPF_SKELS) $(LEGACY_BPF_SKELS) $(NOBTF_BPF_SKELS)
+-	$(CLANG) --analyze $(INCLUDES) libbpftune.c bpftune.c $(TUNER_SRCS)
++	$(CLANG) --analyze $(INCLUDES) -Wno-incompatible-pointer-types libbpftune.c bpftune.c $(TUNER_SRCS)
+ clean:
+    $(call QUIET_CLEAN, bpftune)
+    $(Q)$(RM) $(OPATH)*.o *.d $(OPATH)*.so*
+diff --git a/src/libbpftune.c b/src/libbpftune.c
+index f4bec2f..3c0c28e 100644
+--- a/src/libbpftune.c
++++ b/src/libbpftune.c
+@@ -50,6 +50,13 @@
+ #include <time.h>
+ #include <pthread.h>
+ 
++#ifdef __MUSL__
++typedef union {
++    int sival_int;
++    void *sival_ptr;
++} sigval_t;
++#endif
++
+ unsigned short bpftune_learning_rate;
+ 
+ #include <bpftune/libbpftune.h>
+@@ -1838,7 +1845,7 @@ static void bpftuner_strategy_update(struct bpftuner *tuner)
+	bpftuner_strategy_set(tuner, max_strategy);
+ }
+ 
+-static void bpftuner_strategy_timeout(sigval_t sigval)
++static void bpftuner_strategy_timeout(union sigval sigval)
+ {
+    struct bpftuner *tuner = sigval.sival_ptr;
+ 
+diff --git a/src/libbpftune.c b/src/libbpftune.c
+index 2983060..ef7d2c2 100644
+--- a/src/libbpftune.c
++++ b/src/libbpftune.c
+@@ -2423,7 +2423,7 @@ void *bpftune_server_thread(void *arg)
+ 	if (port == 0) {
+ 		len = sizeof(saddr);
+ 
+-		if (!getsockname(fd, &saddr, &len))
++		if (!getsockname(fd, (struct sockaddr *)&saddr, &len))
+ 			port = ntohs(saddr.sin_port);
+ 	}
+ 	if (port != 0) {
+@@ -2444,7 +2444,7 @@ void *bpftune_server_thread(void *arg)
+ 		char buf[BPFTUNE_SERVER_MSG_MAX];
+ 		char req[80];
+ 		struct sockaddr_in caddr;
+-		int cfd = accept(fd, (struct sockaddr_in *)&caddr, &len);
++		int cfd = accept(fd, (struct sockaddr *)&caddr, &len);
+ 		unsigned long i;
+ 
+ 		if (cfd < 0) {

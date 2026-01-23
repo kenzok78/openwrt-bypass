@@ -8,7 +8,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=xray
-PKG_VERSION:=25.8.3
+PKG_VERSION:=26.1.18
 PKG_RELEASE:=1
 
 PKG_LICENSE:=MPLv2

@@ -1,19 +1,5 @@
 #
-# Copyright (C) 2025 Yannick Chabanois (Ycarus) for OpenMPTCProuter
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
-
-#
-# Copyright (C) 2024 OpenWrt.org
-#
-# This is free software, licensed under the GNU General Public License v2.
-# See /LICENSE for more information.
-#
-
-#
-# Copyright (C) 2024 OpenWrt.org
+# Copyright (C) 2026 Yannick Chabanois (Ycarus) for OpenMPTCProuter
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -22,15 +8,15 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=bpftune
-PKG_VERSION:=1.0.0
+PKG_VERSION:=0.4.2
 PKG_RELEASE:=1
 
 PKG_SOURCE_PROTO:=git
 PKG_SOURCE_URL:=https://github.com/oracle/bpftune.git
-PKG_SOURCE_VERSION:=HEAD
+PKG_SOURCE_VERSION:=0.4-2
 PKG_MIRROR_HASH:=skip
 
-PKG_MAINTAINER:=Ycarus
+PKG_MAINTAINER:=Yannick Chabanis <contact@openmptcprouter.com>
 PKG_LICENSE:=GPL-2.0-only WITH Linux-syscall-note
 PKG_LICENSE_FILES:=LICENSE.txt
 
@@ -57,15 +43,6 @@ define Package/bpftune/description
   neighbour tables, and more.
 endef
 
-define Package/bpftune/config
-  config BPFTUNE_MINIMAL
-    bool "Build minimal version (without documentation)"
-    depends on PACKAGE_bpftune
-    default y
-    help
-	Build bpftune without documentation to reduce build dependencies.
-endef
-
 TARGET_CFLAGS += -I$(STAGING_DIR)/usr/include/libnl3
 TARGET_LDFLAGS += -lbpf -lcap -lnl-3 -lnl-route-3
 
@@ -82,10 +59,6 @@ MAKE_FLAGS += \
     prefix=/usr \
     sbindir=/usr/sbin \
     libdir=/usr/lib
-
-ifeq ($(CONFIG_BPFTUNE_MINIMAL),y)
-MAKE_FLAGS += NO_DOCS=1
-endif
 
 define Build/Configure
 	# bpftune uses a simple Makefile, no configure needed

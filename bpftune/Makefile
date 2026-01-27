@@ -49,8 +49,10 @@ TARGET_LDFLAGS += -lbpf -lcap -lnl-3 -lnl-route-3
 MAKE_FLAGS += \
 	V=1 \
 	CC="$(TARGET_CC)" \
-	CFLAGS="$(TARGET_CFLAGS) -fPIC -std=gnu99 -D_POSIX_C_SOURCE=200809L -I$(PKG_BUILD_DIR)/include -I$(PKG_BUILD_DIR)/src -I$(STAGING_DIR)/usr/include -I$(STAGING_DIR)/usr/include/libnl3 -I$(PKG_BUILD_DIR)/include/uapi" \
+	CFLAGS="$(TARGET_CFLAGS) -fPIC -std=gnu99 -D_POSIX_C_SOURCE=200809L -I$(PKG_BUILD_DIR)/include -I$(PKG_BUILD_DIR)/src -I$(STAGING_DIR)/usr/include -I$(STAGING_DIR)/usr/include/libnl3 -I$(PKG_BUILD_DIR)/include/uapi -I$(LINUX_DIR)/tools/include" \
 	LDFLAGS="$(TARGET_LDFLAGS) -L$(PKG_BUILD_DIR)/src" \
+	BPF_CFLAGS="-I$(STAGING_DIR)/usr/include -I$(PKG_BUILD_DIR)/include -I$(PKG_BUILD_DIR)/src" \
+	BPF_INCLUDE="$(STAGING_DIR)/usr/include" \
 	CLANG="clang" \
 	LLC="llc" \
 	BPFTOOL="$(STAGING_DIR_HOST)/usr/sbin/bpftool" \

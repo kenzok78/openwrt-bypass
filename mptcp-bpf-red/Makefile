@@ -40,11 +40,6 @@ define Build/Compile
 	$(call CompileBPF,$(PKG_BUILD_DIR)/mptcp_bpf_red.c)
 endef
 
-#define Package/mptcpify-bpf/conffiles
-#/etc/config/mptcpify
-#/etc/mptcpify/00-defaults.conf
-#endef
-
 define Package/mptcp-bpf-red/install
 	$(INSTALL_DIR) $(1)/usr/share/bpf/scheduler
 	$(INSTALL_DATA) $(PKG_BUILD_DIR)/mptcp_bpf_red.o $(1)/usr/share/bpf/scheduler

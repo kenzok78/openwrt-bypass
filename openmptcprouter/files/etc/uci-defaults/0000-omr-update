@@ -19,4 +19,6 @@ files="$(ls /etc/uci-defaults/)"
 # Do not keep /etc/nftables.d
 rm -f /lib/upgrade/keep.d/firewall4
 
+sed -i 's:ipkg_bin="apk":ipkg_bin="apk --allow-untrusted":' /usr/libexec/package-manager-call
+
 exit 0

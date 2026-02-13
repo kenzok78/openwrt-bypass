@@ -212,7 +212,7 @@ _ping() {
 				latency=$(echo "$ret" | awk -F/ '/rtt/ {print int($5)}' | tr -d '\n')
 				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}' | tr -d '\n')
 				[ -n "$latency" ] && OMR_TRACKER_LATENCY="$latency"
-				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jittery"
+				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jitter"
 				OMR_TRACKER_LOSS="$loss"
 			fi
 			return 0
@@ -235,7 +235,7 @@ _ping() {
 				latency=$(echo "$ret" | awk -F/ '/rtt/ {print int($5)}' | tr -d '\n')
 				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}' | tr -d '\n')
 				[ -n "$latency" ] && OMR_TRACKER_LATENCY="$latency"
-				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jittery"
+				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jitter"
 				OMR_TRACKER_LOSS="$loss"
 			fi
 			return 0

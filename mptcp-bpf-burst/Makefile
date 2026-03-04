@@ -24,6 +24,10 @@ include $(INCLUDE_DIR)/package.mk
 include $(INCLUDE_DIR)/bpf_mptcp.mk
 include $(INCLUDE_DIR)/nls.mk
 
+ifeq ($(CONFIG_LIBC),"glibc")
+BPF_CFLAGS := $(filter-out -isystem $(TOOLCHAIN_DIR)/include,$(BPF_CFLAGS))
+endif
+
 define Package/mptcp-bpf-burst
   SECTION:=net
   CATEGORY:=Network

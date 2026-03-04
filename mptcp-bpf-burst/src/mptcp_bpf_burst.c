@@ -3,7 +3,7 @@
 
 #include "mptcp_bpf.h"
 #include <bpf/bpf_tracing.h>
-#include <limits.h>
+#include "limits.h"
 
 char _license[] SEC("license") = "GPL";
 

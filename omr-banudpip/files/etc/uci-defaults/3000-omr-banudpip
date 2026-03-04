@@ -31,18 +31,26 @@ if [ -z "$(uci -q get firewall.omr_dst_udp_banip_v4)" ]; then
 		commit firewall
 	EOF
 fi
- 
-uci -q batch <<-EOF >/dev/null
-	delete firewall.omr_dst_udp_banip_v4.storage
-	delete firewall.omr_dst_udp_banip_v6.storage
-	delete firewall.omr_dst_udp_banip_v4.match
-	add_list firewall.omr_dst_udp_banip_v4.match='dest_net'
-	add_list firewall.omr_dst_udp_banip_v4.match='dest_port'
-	delete firewall.omr_dst_udp_banip_v6.match
-	add_list firewall.omr_dst_udp_banip_v6.match='dest_net'
-	add_list firewall.omr_dst_udp_banip_v6.match='dest_port'
-	commit firewall
-EOF
+
+if [ "$(uci -q get firewall.omr_dst_udp_banip_v4.match)" != "dest_net dest_port" ]; then
+	uci -q batch <<-EOF >/dev/null
+		delete firewall.omr_dst_udp_banip_v4.storage
+		delete firewall.omr_dst_udp_banip_v6.storage
+		delete firewall.omr_dst_udp_banip_v4.match
+		add_list firewall.omr_dst_udp_banip_v4.match='dest_net'
+		add_list firewall.omr_dst_udp_banip_v4.match='dest_port'
+		delete firewall.omr_dst_udp_banip_v6.match
+		add_list firewall.omr_dst_udp_banip_v6.match='dest_net'
+		add_list firewall.omr_dst_udp_banip_v6.match='dest_port'
+		commit firewall
+	EOF
+	if [ -n "$(nft list ruleset)" ]; then
+		/sbin/fw4 -q stop >/dev/null 2>&1 || true
+		sleep 2
+		/sbin/fw4 -q flush >/dev/null 2>&1 || true
+		/sbin/fw4 -q start >/dev/null 2>&1 || true
+	fi
+fi
 
 if [ -z "$(grep banudpipv4 | /etc/crontabs/root)" ]; then
 	echo '0 1 * * * /usr/bin/wget -O /etc/luci-uploads/banudpipv4.list https://files-update.openmptcprouter.com/banudpipv4.list' > /etc/crontabs/root

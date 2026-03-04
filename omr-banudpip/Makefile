@@ -16,7 +16,7 @@ include $(INCLUDE_DIR)/package.mk
 define Package/$(PKG_NAME)
 SECTION:=net
 CATEGORY:=Network
-DEPENDS:=+curl +firewall4 @!LINUX_5_4
+DEPENDS:=+curl +firewall4
 TITLE:=OMR-BanUDPIP
 endef
 

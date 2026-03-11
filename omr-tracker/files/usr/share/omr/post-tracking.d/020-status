@@ -11,16 +11,23 @@
 interface_up=$(ifstatus "$OMR_TRACKER_INTERFACE" 2>/dev/null | jsonfilter -q -e '@["up"]')
 [ "$interface_up" != "true" ] && exit 0
 
+# Cache frequently reused values
+_now=$(date +"%s")
+_debug=$(uci -q get openmptcprouter.settings.debug)
+_external_check=$(uci -q get openmptcprouter.settings.external_check)
+_tracebox=$(uci -q get openmptcprouter.settings.tracebox)
+_lc=$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc)
+
 # Save wan settings for status page
-if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc)" = "" ] || [ $(($(date +"%s") + $((30 + RANDOM % 10)) - $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc))) -gt 3600 ] || [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.state)" = "down" ]; }; then
-	[ "$(uci -q get openmptcprouter.settings.debug)" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE..."
+if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ -z "$_lc" ] || [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.state)" = "down" ] || [ $((_now + $((30 + RANDOM % 10)) - _lc)) -gt 3600 ]; }; then
+	[ "$_debug" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE..."
 	ipaddr=""
 	ip6addr=""
-	if [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ] && [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.vpn)" != "1" ]; then
+	if [ "$_external_check" != "0" ] && [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.vpn)" != "1" ]; then
 		[ -n "$OMR_TRACKER_DEVICE_IP" ] && ipaddr="$(omr-ip-intf $OMR_TRACKER_DEVICE)"
 		[ -n "$OMR_TRACKER_DEVICE_IP6" ] && ip6addr="$(omr-ip6-intf $OMR_TRACKER_DEVICE)"
 	else
-		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(date +"%s")
+		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc="$_now"
 		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.state="up"
 	fi
 	[ -n "$ipaddr" ] && {
@@ -47,7 +54,7 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 		#		/etc/init.d/odhcpd enable > /dev/null 2>&1
 		#	fi
 		#fi
-		if [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ]; then
+		if [ "$_external_check" != "0" ]; then
 			#asn="$(wget -4 -qO- -T 4 http://api.iptoasn.com/v1/as/ip/$ipaddr | jsonfilter -q -e '@.as_description')"
 			#[ -z "$asn" ] && {
 			whoistimeout=$(uci -q get openmptcprouter.settings.status_whois_timeout)
@@ -58,19 +65,19 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 		[ -z "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE)" ] && {
 			uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE=interface
 		}
-		#if [ "$(uci -q get openmptcprouter.latest_versions.lc)" = "" ] || [ $(($(date +"%s") - $(uci -q get openmptcprouter.latest_versions.lc))) -gt 3600 ]; then
+		#if local _lvlc; _lvlc=$(uci -q get openmptcprouter.latest_versions.lc); [ -z "$_lvlc" ] || [ $((_now - _lvlc)) -gt 3600 ]; then
 		#	latestversions="$(curl -4 -s -m 3 https://www.openmptcprouter.com/version/version.json)"
 		#	[ -n "$latestversions" ] && {
 		#		uci -q set openmptcprouter.latest_versions=latest_versions
 		#		uci -q set openmptcprouter.latest_versions.omr=$(echo $latestversions | jsonfilter -q -e '@.omr')-$(ubus call system board | jsonfilter -e '@.kernel' | cut -d'.' -f1,2)
 		#		uci -q set openmptcprouter.latest_versions.vps=$(echo $latestversions | jsonfilter -q -e '@.vps')
-		#		uci -q set openmptcprouter.latest_versions.lc=$(date +"%s")
+		#		uci -q set openmptcprouter.latest_versions.lc="$_now"
 		#	}
 		#fi
 		[ -n "$ipaddr" ] && [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.publicip)" != "$ipaddr" ] && {
 			previousip="$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.publicip)"
 			if [ -n "$previousip" ]; then
-				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (previous: $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.publicip))"
+				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (previous: $previousip)"
 			else
 				_log "New public ip detected for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $ipaddr (Refresh IP data)"
 			fi
@@ -116,13 +123,17 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 		fi
 
 		omrtracebox=""
+		_tracebox_running=$(pgrep -f tracebox)
 		traceboxmtutest() {
 			omr_tracebox_mtu() {
 				serverip=$1
 				[ "$serverip" != "${1#*[0-9].[0-9]}" ] && serverip=""
-				[ -n "$serverip" ] && [ "$serverip" != "127.0.0.1" ] && [ "$(pgrep -f tracebox)" = "" ] && [ "$(uci -q get openmptcprouter.settings.tracebox)" != "0" ] && {
+				[ -n "$serverip" ] && [ "$serverip" != "127.0.0.1" ] && [ -z "$_tracebox_running" ] && [ "$_tracebox" != "0" ] && {
 					omrtracebox="$(omr-tracebox-mptcp $serverip $OMR_TRACKER_DEVICE)"
-					[ -n "$omrtracebox" ] && [ -z "$(echo $omrtracebox | grep error)" ] && uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$omrtracebox"
+					case "$omrtracebox" in
+					*error*|"") ;;
+					*) uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$omrtracebox" ;;
+					esac
 				}
 				#if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ "$(uci -q get glorytun.vpn.enable)" != "1" ] && [ "$(uci -q get glorytun-udp.vpn.enable)" != "1" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
 				if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
@@ -134,22 +145,18 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 						}
 					elif [ -n "$OMR_TRACKER_DEVICE_IP" ]; then
 						if [ -n "$serverip" ] && [ "$serverip" != "127.0.0.1" ]; then
+							_cur_mtu=$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')
 							mtu=$(omr-mtu $OMR_TRACKER_DEVICE_IP $serverip)
-							[ -n "$mtu" ] && [ "$mtu" != "$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')" ] && {
-								mtu=$(omr-mtu $OMR_TRACKER_DEVICE_IP $serverip)
-								[ -n "$mtu" ] && [ "$mtu" != "$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')" ] && {
-									uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mtu=$mtu
-									ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
-								}
+							[ -n "$mtu" ] && [ "$mtu" != "$_cur_mtu" ] && {
+								uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mtu=$mtu
+								ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
 							}
 						else
+							_cur_mtu=$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')
 							mtu=$(omr-mtu $OMR_TRACKER_DEVICE_IP 1.1.1.1)
-							[ -n "$mtu" ] && [ "$mtu" != "$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')" ] && {
-								mtu=$(omr-mtu $OMR_TRACKER_DEVICE_IP $serverip)
-								[ -n "$mtu" ] && [ "$mtu" != "$(ip --json link show dev $OMR_TRACKER_DEVICE | jsonfilter -e '@[0].mtu' | tr -d '\n')" ] && {
-									uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mtu=$mtu
-									ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
-								}
+							[ -n "$mtu" ] && [ "$mtu" != "$_cur_mtu" ] && {
+								uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mtu=$mtu
+								ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
 							}
 						fi
 					fi
@@ -159,15 +166,15 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 		}
 		config_load openmptcprouter
 		config_foreach traceboxmtutest server
-#		[ "$(uci -q get openmptcprouter.settings.tracebox)" = "0" ] && [ -n "$OMR_TRACKER_DEVICE" ] && {
+#		[ "$_tracebox" = "0" ] && [ -n "$OMR_TRACKER_DEVICE" ] && {
 #			mptcpsupport="$(omr-mptcp-intf $OMR_TRACKER_DEVICE)"
 #			[ -n "$mptcpsupport" ] && uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$mptcpsupport"
 #		}
 		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.state='up'
-		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(date +"%s")
+		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc="$_now"
 	}
 	[ -n "$ip6addr" ] && {
-		if [ "$(uci -q get openmptcprouter.settings.external_check)" != "0" ]; then
+		if [ "$_external_check" != "0" ]; then
 			asn="$(whois $ip6addr 2>/dev/null | grep -m 1 -i 'netname' | awk '{print $2}')"
 		fi
 		[ -z "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE)" ] && {
@@ -179,7 +186,7 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 				uci -q set openmptcprouter.latest_versions=latest_versions
 				uci -q set openmptcprouter.latest_versions.omr=$(echo $latestversions | jsonfilter -q -e '@.omr')
 				uci -q set openmptcprouter.latest_versions.vps=$(echo $latestversions | jsonfilter -q -e '@.vps')
-				uci -q set openmptcprouter.latest_versions.lc=$(date +"%s")
+				uci -q set openmptcprouter.latest_versions.lc="$_now"
 			}
 		fi
 		[ -n "$ip6addr" ] && [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.publicip)" != "$ip6addr" ] && {
@@ -196,19 +203,23 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 			uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.asn="$asn"
 		}
 		omrtracebox=""
+		_tracebox_running=$(pgrep -f tracebox)
 		traceboxmtutest() {
 			omr_tracebox_mtu() {
 				local serverip=$1
 				[ "$serverip" != "${1#*:[0-9a-fA-F]}" ] && serverip=""
-				[ -n "$serverip" ] && [ "$serverip" != "127.0.0.1" ] && [ "$(pgrep -f tracebox)" = "" ] && [ "$(uci -q get openmptcprouter.settings.tracebox)" != "0" ] && {
+				[ -n "$serverip" ] && [ "$serverip" != "127.0.0.1" ] && [ -z "$_tracebox_running" ] && [ "$_tracebox" != "0" ] && {
 					omrtracebox="$(omr-tracebox-mptcp $serverip $OMR_TRACKER_DEVICE)"
-					[ -n "$omrtracebox" ] && [ -z "$(echo $omrtracebox | grep error)" ] && uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$omrtracebox"
+					case "$omrtracebox" in
+					*error*|"") ;;
+					*) uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$omrtracebox" ;;
+					esac
 				}
 				#if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ "$(uci -q get glorytun.vpn.enable)" != "1" ] && [ "$(uci -q get glorytun-udp.vpn.enable)" != "1" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
 				if [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && [ -n "$OMR_TRACKER_DEVICE" ]; then
 					network_device=$(find_network_device ${OMR_TRACKER_INTERFACE})
 					if [ -n "$network_device" ] && [ -n "$(uci -q get network.${network_device}.mtu)" ]; then
-						mtu=$(uci -q get network.$(find_network_device ${OMR_TRACKER_INTERFACE}).mtu)
+						mtu=$(uci -q get network.${network_device}.mtu)
 						[ -n "$mtu" ] && {
 							uci -q set openmptcprouter.${OMR_TRACKER_INTERFACE}.mtu=$mtu
 							ip link set dev $OMR_TRACKER_DEVICE mtu $mtu > /dev/null 2>&1
@@ -235,11 +246,11 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 		config_load openmptcprouter
 		config_foreach traceboxmtutest server
 		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.state='up'
-		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(date +"%s")
+		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc="$_now"
 	}
-	if [ "$(uci -q get shadowsocks-libev.sss0.server)" != "" ] && [ "$(uci -q get openmptcprouter.settings.external_check)" = "0" ]; then
+	if [ "$(uci -q get shadowsocks-libev.sss0.server)" != "" ] && [ "$_external_check" = "0" ]; then
 		if ping -B -I $OMR_TRACKER_DEVICE -c 1 $(uci -q get shadowsocks-libev.sss0.server) >/dev/null 2>&1; then
-			uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(date +"%s")
+			uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc="$_now"
 		fi
 	fi
 	proto="$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)"
@@ -261,23 +272,24 @@ if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRA
 			uci -q delete openmptcprouter.$OMR_TRACKER_INTERFACE.manufacturer
 		fi
 	fi
-	if [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc)" = "" ] || [ $(($(date +"%s") - $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc))) -gt 3600 ]; then
-		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$(( $(date +"%s") - 3400 ))
-		[ "$(uci -q get openmptcprouter.settings.debug)" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE... Failed"
+	_lc_after=$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.lc)
+	if [ -z "$_lc_after" ] || [ $((_now - _lc_after)) -gt 3600 ]; then
+		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.lc=$((_now - 3400))
+		[ "$_debug" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE... Failed"
 		uci -q commit openmptcprouter
 	else
-		[ "$(uci -q get openmptcprouter.settings.debug)" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE... Done"
+		[ "$_debug" = "true" ] && _log "Get status and settings for $OMR_TRACKER_INTERFACE... Done"
 		[ -n "$(uci -q changes openmptcprouter)" ] && uci -q commit openmptcprouter
-		if [ "$(pgrep -f openmptcprouter-vps)" = "" ] && { [ "$(uci -q get openmptcprouter.settings.apilc)" = "" ] || [ $(($(date +"%s") - $(uci -q get openmptcprouter.settings.apilc))) -gt 3600 ]; }; then
-			[ "$(uci -q get openmptcprouter.settings.debug)" = "true" ] && _log "Check API configuration..."
+		if [ "$(pgrep -f openmptcprouter-vps)" = "" ] && { [ -z "$(uci -q get openmptcprouter.settings.apilc)" ] || [ $((_now - $(uci -q get openmptcprouter.settings.apilc))) -gt 3600 ]; }; then
+			[ "$_debug" = "true" ] && _log "Check API configuration..."
 			/etc/init.d/openmptcprouter-vps restart >/dev/null 2>&1 &
-			uci -q set openmptcprouter.settings.apilc=$(date +"%s")
-			[ "$(uci -q get openmptcprouter.settings.debug)" = "true" ] && _log "Check API configuration... Done"
+			uci -q set openmptcprouter.settings.apilc="$_now"
+			[ "$_debug" = "true" ] && _log "Check API configuration... Done"
 		fi
 	fi
 	#dns_flush
 fi
-if [ "$(uci -q get openmptcprouter.settings.tracebox)" = "0" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$OMR_TRACKER_INTERFACE" ] && [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.mplc)" = "" ] || [ $(($(date +"%s") - $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.mplc))) -gt 600 ]; }; then
+if [ "$_tracebox" = "0" ] && [ -n "$OMR_TRACKER_DEVICE" ] && [ -n "$OMR_TRACKER_INTERFACE" ] && [ "$OMR_TRACKER_INTERFACE" != "omrvpn" ] && { [ "$(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.mplc)" = "" ] || [ $(($(date +"%s") - $(uci -q get openmptcprouter.$OMR_TRACKER_INTERFACE.mplc))) -gt 600 ]; }; then
 	#_log "Get MPTCP status for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE)"
 	mptcpsupport="$(omr-mptcp-intf $OMR_TRACKER_DEVICE)"
 	#_log "MPTCP status for $OMR_TRACKER_INTERFACE ($OMR_TRACKER_DEVICE): $mptcpsupport"
@@ -285,7 +297,7 @@ if [ "$(uci -q get openmptcprouter.settings.tracebox)" = "0" ] && [ -n "$OMR_TRA
 		uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mptcp_status="$mptcpsupport"
 		uci -q commit openmptcprouter
 	}
-	uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mplc=$(date +"%s")
+	uci -q set openmptcprouter.$OMR_TRACKER_INTERFACE.mplc="$_now"
 	uci -q commit openmptcprouter
 fi
 

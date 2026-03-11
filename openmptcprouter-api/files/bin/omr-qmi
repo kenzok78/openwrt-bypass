@@ -30,7 +30,7 @@ fi
 OPERATOR=$(timeout 1 uqmi -d $MODEM_INTF --get-serving-system | jsonfilter -e '@.plmn_description' | tr -d '\n')
 NUMBER=$(timeout 1 uqmi -d $MODEM_INTF --get-msisdn | jsonfilter -e '@' | tr -d '\n')
 STATE=$(timeout 1 uqmi -d $MODEM_INTF --get-data-status | jsonfilter -e '@' | tr -d '\n')
-[ "$INFO" = "all" ] && echo "$PERCENT;$OPERATOR;$NUMBER;$TATE;$TYPE"
+[ "$INFO" = "all" ] && echo "$PERCENT;$OPERATOR;$NUMBER;$STATE;$TYPE"
 
 # Output: RSSI;RSRP;RSRQ;SINR
 [ "$INFO" = "signal" ] && echo "$RSSI;$RSRP;$RSRQ;$SINR"

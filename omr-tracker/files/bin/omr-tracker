@@ -68,12 +68,12 @@ _init_rto() {
 _update_rto() {
 	if [ -z "$srtt" ]; then
 		srtt=$1
-		rttvar=$(echo "$(($1 / 2))" | cut -d. -f1)
+		rttvar=$(( $1 / 2 ))
 		#"
 	else
 		diff=$((srtt - $1))
-		rttvar=$(echo "$(((75 * rttvar + 25 * (diff >= 0 ? diff : -diff)) / 100))" | cut -d. -f1)
-		srtt=$(echo "$(((75 * srtt + 25 * $1) / 100))" | cut -d. -f1)
+		rttvar=$(( (75 * rttvar + 25 * (diff >= 0 ? diff : -diff)) / 100 ))
+		srtt=$(( (75 * srtt + 25 * $1) / 100 ))
 	fi
 	rto=$((tmp = srtt + 3 * rttvar, tmp > rto_init ? tmp : rto_init))
 }
@@ -122,7 +122,7 @@ _ping_server() {
 			if [ -n "$serverip" ]; then
 				_ping "$serverip" "$device" "yes"
 				statusp=$?
-				if $(exit $statusp); then
+				if [ "$statusp" -eq 0 ]; then
 					serverip_ping=true
 					return 0
 				fi
@@ -162,7 +162,7 @@ _httping_server() {
 			if [ -n "$serverip" ]; then
 				_httping "${serverip}:${port}" "$device" "yes" true
 				statusp=$?
-				if $(exit $statusp); then
+				if [ "$statusp" -eq 0 ]; then
 					serverip_ping=true
 					return 0
 				fi
@@ -196,7 +196,7 @@ _ping() {
 	[ -z "$host" ] && return
 	local device="$2"
 	local localip="$3"
-	if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$OMR_TRACKER_NO_BIND" = "1" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "3g" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "qmi" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "ncm" ]; }; then
+	if [ -n "$OMR_TRACKER_INTERFACE" ] && { [ "$OMR_TRACKER_NO_BIND" = "1" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "3g" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "qmi" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "ncm" ]; }; then
 		ret=$(ping -I "${device}" \
 			-w "$OMR_TRACKER_TIMEOUT" \
 			-c "$OMR_TRACKER_COUNT" \
@@ -205,12 +205,11 @@ _ping() {
 			-Q 184 \
 			"${host}" 2>&1
 		)
-		loss=$(echo "$ret" | awk '/packet loss/ && !/errors/ {gsub("%","");print $6}' | tr -d '\n')
-		
+		loss=$(echo "$ret" | awk '/packet loss/ && !/errors/ {gsub("%","");printf "%s",$6}')
 		if [ -n "$loss" ] && [ "$loss" != "100" ]; then
 			if [ "$localip" = "yes" ]; then
-				latency=$(echo "$ret" | awk -F/ '/rtt/ {print int($5)}' | tr -d '\n')
-				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}' | tr -d '\n')
+				latency=$(echo "$ret" | awk -F/ '/rtt/ {printf "%d", int($5)}')
+				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}')
 				[ -n "$latency" ] && OMR_TRACKER_LATENCY="$latency"
 				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jitter"
 				OMR_TRACKER_LOSS="$loss"
@@ -228,12 +227,12 @@ _ping() {
 		)
 		bindcheck=$(echo "$ret" | grep "Address not available")
 		[ -n "$bindcheck" ] && OMR_TRACKER_NO_BIND=1
-		loss=$(echo "$ret" | awk '/packet loss/ && !/errors/  {gsub("%","");print $6}' | tr -d '\n')
+		loss=$(echo "$ret" | awk '/packet loss/ && !/errors/ {gsub("%","");printf "%s",$6}')
 		if [ -n "$loss" ] && [ "$loss" != "100" ]; then
 			if [ "$localip" = "yes" ]; then
 				#latency=$(echo "$ret" | grep rtt | cut -d "/" -s -f5 | cut -d "." -f1 | tr -d '\n')
-				latency=$(echo "$ret" | awk -F/ '/rtt/ {print int($5)}' | tr -d '\n')
-				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}' | tr -d '\n')
+				latency=$(echo "$ret" | awk -F/ '/rtt/ {printf "%d", int($5)}')
+				jitter=$(echo "$ret" | awk -F/ '/rtt/ {printf "%.1f", $7}')
 				[ -n "$latency" ] && OMR_TRACKER_LATENCY="$latency"
 				[ -n "$jitter" ] && OMR_TRACKER_JITTER="$jitter"
 				OMR_TRACKER_LOSS="$loss"
@@ -249,46 +248,23 @@ _httping() {
 	local deviceip=$2
 	local localip=$3
 	local https=$4
-	if [ -z "$https" ] || [ "$https" = false ]; then
-		ret=$(httping "${host}" \
-			-y "${deviceip}" \
-			-t "$OMR_TRACKER_TIMEOUT" \
-			-c "$OMR_TRACKER_COUNT" 2>&1
-		)
-		bindcheck=$(echo "$ret" | grep "Address not available")
-		[ -n "$bindcheck" ] && OMR_TRACKER_NO_BIND=1
-		loss=$(echo "$ret" | awk '/failed/ {gsub("%",""); print int($5)}' | tr -d '\n')
-		if [ -n "$loss" ] && [ "$loss" != "100" ]; then
-			if [ "$localip" = "yes" ]; then
-				latency=$(echo "$ret" | cut -d "/" -s -f5 | cut -d "." -f1 | tr -d '\n')
-				[ -n "$latency" ] && {
-					OMR_TRACKER_LATENCY="$latency"
-					#_update_rto "$OMR_TRACKER_LATENCY"
-				}
-				OMR_TRACKER_LOSS="$loss"
-			fi
-			return 0
+	local flag=""
+	[ "$https" = "true" ] && flag="-l"
+	ret=$(httping $flag "${host}" \
+		-y "${deviceip}" \
+		-t "$OMR_TRACKER_TIMEOUT" \
+		-c "$OMR_TRACKER_COUNT" 2>&1
+	)
+	bindcheck=$(echo "$ret" | grep "Address not available")
+	[ -n "$bindcheck" ] && OMR_TRACKER_NO_BIND=1
+	loss=$(echo "$ret" | awk '/failed/ {gsub("%",""); print int($5)}' | tr -d '\n')
+	if [ -n "$loss" ] && [ "$loss" != "100" ]; then
+		if [ "$localip" = "yes" ]; then
+			latency=$(echo "$ret" | cut -d "/" -s -f5 | cut -d "." -f1 | tr -d '\n')
+			[ -n "$latency" ] && OMR_TRACKER_LATENCY="$latency"
+			OMR_TRACKER_LOSS="$loss"
 		fi
-	else
-		ret=$(httping -l "${host}" \
-			-y "${deviceip}" \
-			-t "$OMR_TRACKER_TIMEOUT" \
-			-c "$OMR_TRACKER_COUNT" 2>&1
-		)
-		bindcheck=$(echo "$ret" | grep "Address not available")
-		[ -n "$bindcheck" ] && OMR_TRACKER_NO_BIND=1
-		loss=$(echo "$ret" | awk '/failed/ {gsub("%",""); print int($5)}' | tr -d '\n')
-		if [ -n "$loss" ] && [ "$loss" != "100" ]; then
-			if [ "$localip" = "yes" ]; then
-				latency=$(echo "$ret" | cut -d "/" -s -f5 | cut -d "." -f1 | tr -d '\n')
-				[ -n "$latency" ] && {
-					OMR_TRACKER_LATENCY="$latency"
-					#_update_rto "$OMR_TRACKER_LATENCY"
-				}
-				OMR_TRACKER_LOSS="$loss"
-			fi
-			return 0
-		fi
+		return 0
 	fi
 	return 1
 }
@@ -338,7 +314,7 @@ while true; do
 			[ -z "$OMR_TRACKER_DEVICE" ] && OMR_TRACKER_DEVICE=$(ifstatus "$OMR_TRACKER_INTERFACE" | jsonfilter -q -e '@["l3_device"]')
 			[ -z "$OMR_TRACKER_DEVICE" ] && OMR_TRACKER_DEVICE=$(ifstatus "${OMR_TRACKER_INTERFACE}_4" | jsonfilter -q -e '@["l3_device"]')
 			#[ -z "$OMR_TRACKER_DEVICE" ] && config_get OMR_TRACKER_DEVICE "$OMR_TRACKER_INTERFACE" device
-			[ -n "$(echo $OMR_TRACKER_DEVICE | grep '@')" ] && OMR_TRACKER_DEVICE=$(ifstatus "$OMR_TRACKER_INTERFACE" | jsonfilter -q -e '@["device"]')
+			[[ "$OMR_TRACKER_DEVICE" == *@* ]] && OMR_TRACKER_DEVICE=$(ifstatus "$OMR_TRACKER_INTERFACE" | jsonfilter -q -e '@["device"]')
 			[ -z "$OMR_TRACKER_DEVICE" ] && network_get_physdev OMR_TRACKER_DEVICE "$OMR_TRACKER_INTERFACE"
 			[ -z "$OMR_TRACKER_DEVICE" ] && network_get_device OMR_TRACKER_DEVICE "$OMR_TRACKER_INTERFACE"
 	}
@@ -451,12 +427,12 @@ while true; do
 						_ping "$OMR_TRACKER_DEVICE_GATEWAY" "$OMR_TRACKER_DEVICE" "no"
 						status=$?
 					fi
-					if $(exit $status) && [ "$OMR_TRACKER_TYPE" = "none" ]; then
+					if [ "$status" -eq 0 ] && [ "$OMR_TRACKER_TYPE" = "none" ]; then
 						OMR_TRACKER_STATUS_MSG=""
 						OMR_TRACKER_STATUS="OK"
 						break
 					elif [ "$OMR_TRACKER_TYPE" != "none" ]; then
-						if ! $(exit $status); then
+						if [ "$status" -ne 0 ]; then
 							OMR_TRACKER_STATUS_MSG="IPv4 gateway down"
 						fi
 						serverip_ping=false
@@ -471,7 +447,7 @@ while true; do
 						if [ "$serverip_ping" = false ] && [ -n "$OMR_TRACKER_HOST" ]; then
 							OMR_TRACKER_HOST=$(resolveip -4 -t 5 $OMR_TRACKER_HOST | head -n 1 | tr -d "\n")
 							if [ -n "$OMR_TRACKER_HOST" ]; then
-								if [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "3g" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "qmi" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "ncm" ]; then
+								if [ "$OMR_TRACKER_INTERFACE_PROTO" = "3g" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "qmi" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "ncm" ]; then
 									# Check if route is not used
 									while ! ip route add $OMR_TRACKER_HOST via $OMR_TRACKER_DEVICE_GATEWAY dev $OMR_TRACKER_DEVICE src $OMR_TRACKER_DEVICE_IP > /dev/null 2>&1
 									do
@@ -492,7 +468,7 @@ while true; do
 									statusb=$?
 								fi
 								[ -n "$(ip route show ${OMR_TRACKER_HOST} via ${OMR_TRACKER_DEVICE_GATEWAY} dev ${OMR_TRACKER_DEVICE} src ${OMR_TRACKER_DEVICE_IP})" ] && ip route del "$OMR_TRACKER_HOST" via "$OMR_TRACKER_DEVICE_GATEWAY" dev "$OMR_TRACKER_DEVICE" src "$OMR_TRACKER_DEVICE_IP" > /dev/null 2>&1
-								if $(exit $statusb); then
+								if [ "$statusb" -eq 0 ]; then
 									#OMR_TRACKER_STATUS_MSG=""
 									OMR_TRACKER_STATUS="OK"
 								else
@@ -534,7 +510,7 @@ while true; do
 							fi
 						fi
 						[ "$OMR_TRACKER_STATUS" = "OK" ] && break
-					elif ! $(exit $status); then
+					elif [ "$status" -ne 0 ]; then
 						OMR_TRACKER_STATUS_MSG="IPv4 gateway down"
 					fi
 					tries=$((tries - 1))
@@ -564,12 +540,12 @@ while true; do
 						_ping "$OMR_TRACKER_DEVICE_GATEWAY6" "$OMR_TRACKER_DEVICE" "no"
 						status=$?
 					#fi
-					if $(exit $status) && [ "$OMR_TRACKER_TYPE" = "none" ]; then
+					if [ "$status" -eq 0 ] && [ "$OMR_TRACKER_TYPE" = "none" ]; then
 						OMR_TRACKER_STATUS_MSG=""
 						OMR_TRACKER_STATUS="OK"
 						break
 					elif [ "$OMR_TRACKER_TYPE" != "none" ]; then
-						if ! $(exit $status); then
+						if [ "$status" -ne 0 ]; then
 							OMR_TRACKER_STATUS_MSG="IPv6 gateway down"
 						fi
 						serverip_ping=false
@@ -585,7 +561,7 @@ while true; do
 						if [ "$serverip_ping" = false ] && [ -n "$OMR_TRACKER_HOST6" ]; then
 							OMR_TRACKER_HOST6=$(resolveip -6 -t 5 $OMR_TRACKER_HOST6 | head -n 1 | tr -d "\n")
 							if [ -n "$OMR_TRACKER_HOST6" ]; then
-								if [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "3g" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "qmi" ] || [ "$(uci -q get network.$OMR_TRACKER_INTERFACE.proto)" = "ncm" ]; then
+								if [ "$OMR_TRACKER_INTERFACE_PROTO" = "3g" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "qmi" ] || [ "$OMR_TRACKER_INTERFACE_PROTO" = "ncm" ]; then
 									# Check if route is not used
 									while ! ip -6 route add $OMR_TRACKER_HOST6 via $OMR_TRACKER_DEVICE_GATEWAY6 dev $OMR_TRACKER_DEVICE src $OMR_TRACKER_DEVICE_IP6 > /dev/null 2>&1
 									do
@@ -606,7 +582,7 @@ while true; do
 									statusb=$?
 								fi
 								ip -6 route del "$OMR_TRACKER_HOST6" via "$OMR_TRACKER_DEVICE_GATEWAY6" dev "$OMR_TRACKER_DEVICE" src "$OMR_TRACKER_DEVICE_IP6" > /dev/null 2>&1
-								if $(exit $statusb); then
+								if [ "$statusb" -eq 0 ]; then
 									OMR_TRACKER_STATUS_MSG=""
 									OMR_TRACKER_STATUS="OK"
 								else
@@ -648,7 +624,7 @@ while true; do
 							fi
 						fi
 						[ "$OMR_TRACKER_STATUS" = "OK" ] && break
-					elif ! $(exit $status); then
+					elif [ "$status" -ne 0 ]; then
 						OMR_TRACKER_STATUS_MSG="IPv6 gateway down"
 					fi
 					tries=$((tries - 1))

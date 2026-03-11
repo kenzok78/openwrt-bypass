@@ -88,6 +88,29 @@ _get_ip() {
 	uci -q commit openmptcprouter
 }
 
+_send_mail_alert_ss() {
+	local type="$1"
+	local mail_alert mail_to OMR_SYSNAME mail_subject mail_message
+	mail_alert="$(uci -q get omr-tracker.proxy.mail_alert)"
+	[ "$mail_alert" != "1" ] && return
+	mail_to="$(uci -q get mail.default.to)"
+	[ -z "$mail_to" ] && return
+	OMR_SYSNAME="$(uci -q get system.@system[0].hostname)"
+	mail_subject="$(uci -q get omr-tracker.defaults.mail_${type}_subject)"
+	mail_message="$(uci -q get omr-tracker.defaults.mail_${type}_message)"
+	if [ -n "$mail_subject" ] && [ -n "$mail_message" ]; then
+		mail_subject=$(echo "$mail_subject" | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g")
+		mail_message=$(echo "$mail_message" | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g")
+		echo -e "Subject: ${mail_subject}\n\n${mail_message}" | sendmail "$mail_to"
+	else
+		if [ "$type" = "up" ]; then
+			echo -e "Subject: $OMR_SYSNAME: Shadowsocks Proxy is UP." | sendmail "$mail_to"
+		else
+			echo -e "Subject: $OMR_SYSNAME: Shadowsocks Proxy is down\n\nConnection failure of ShadowSocks proxy detected. The reason is \"$OMR_TRACKER_STATUS_MSG\"." | sendmail "$mail_to"
+		fi
+	fi
+}
+
 timeout=${OMR_TRACKER_TIMEOUT:-5}
 interval=${OMR_TRACKER_INTERVAL:-10}
 retry=${OMR_TRACKER_TRIES:-4}
@@ -106,6 +129,12 @@ uci -q delete openmptcprouter.omr.shadowsocks=""
 _get_ip
 
 OMR_TRACKER_PREV_STATUS=""
+
+case "$type" in
+	libev) _ss_cfg="shadowsocks-libev" ;;
+	rust)  _ss_cfg="shadowsocks-rust" ;;
+	*)     _ss_cfg="" ;;
+esac
 
 while true; do
 	host="${hosts%% *}"
@@ -126,43 +155,20 @@ while true; do
 			OMR_TRACKER_STATUS_MSG="Shadowsocks $type ${server} is up (can contact via http ${host})"
 			uci -q set openmptcprouter.omr.ss_${server}="up"
 			uci -q commit openmptcprouter.omr
-			if [ "$type" = "libev" ]; then
+			if [ -n "$_ss_cfg" ]; then
 				_remove_rule() {
-					[ "$(uci -q get shadowsocks-libev.$1.server)" != "$2" ] && return
-					uci -q set shadowsocks-libev.$1.disabled=0
+					[ "$(uci -q get ${_ss_cfg}.$1.server)" != "$2" ] && return
+					uci -q set ${_ss_cfg}.$1.disabled=0
 				}
-				config_load shadowsocks-libev
-				config_foreach _remove_rule ss_redir ${server}
-				uci -q commit shadowsocks-libev
+				config_load "$_ss_cfg"
+				config_foreach _remove_rule ss_redir "${server}"
+				uci -q commit "$_ss_cfg"
+				/etc/init.d/${_ss_cfg} rules_reset 2>/dev/null
 			fi
-			if [ "$type" = "rust" ]; then
-				_remove_rule() {
-					[ "$(uci -q get shadowsocks-rust.$1.server)" != "$2" ] && return
-					uci -q set shadowsocks-rust.$1.disabled=0
-				}
-				config_load shadowsocks-rust
-				config_foreach _remove_rule ss_redir ${server}
-				uci -q commit shadowsocks-rust
-			fi
-			[ "$type" = "libev" ] && /etc/init.d/shadowsocks-libev rules_reset 2> /dev/null
-			[ "$type" = "rust" ] && /etc/init.d/shadowsocks-rust rules_reset 2> /dev/null
 			#[ "$type" = "libev" ] && /etc/init.d/shadowsocks-libev rules_up 2> /dev/null
 			#[ "$type" = "rust" ] && /etc/init.d/shadowsocks-rust rules_up 2> /dev/null
 
-			mail_alert="$(uci -q get omr-tracker.proxy.mail_alert)"
-			#[ -z "$mail_alert" ] && mail_alert="$(uci -q get omr-tracker.defaults.mail_alert)"
-			[ "$mail_alert" = "1" ] && [ -n "$(uci -q get mail.default.to)" ] && {
-				OMR_SYSNAME="$(uci -q get system.@system[0].hostname)"
-				if [ "$(uci -q get omr-tracker.defaults.mail_up_subject)" != "" ] && [ "$(uci -q get omr-tracker.defaults.mail_up_message)" != "" ]; then
-					mail_subject="$(uci -q get omr-tracker.defaults.mail_up_subject)"
-					mail_subject=`echo $mail_subject | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g"`
-					mail_message="$(uci -q get omr-tracker.defaults.mail_up_message)"
-					mail_message=`echo $mail_message | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g"`
-					echo -e "Subject: ${mail_subject}\n\n${mail_message}" | sendmail $(uci -q get mail.default.to)
-				else
-					echo -e "Subject: $OMR_SYSNAME: Shadowsocks Proxy is UP." | sendmail $(uci -q get mail.default.to)
-				fi
-			}
+			_send_mail_alert_ss "up"
 			script_alert_up="$(uci -q get omr-tracker.proxy.script_alert_up)"
 			[ -n "$script_alert_up" ] && eval $script_alert_up
 			_get_ip
@@ -192,28 +198,24 @@ while true; do
 	else
 		last=$((last + 1 ))
 		[ -z "$nocontact" ] && nocontact="$host" || nocontact="$nocontact, $host"
-		if [ "$type" = "libev" ]; then
+		case "$type" in
+		libev)
 			serverip="$(uci -q get shadowsocks-libev.${server}.server)"
 			disabled="$(uci -q get shadowsocks-libev.${server}.disabled)"
-		elif [ "$type" = "rust" ]; then
+			;;
+		rust)
 			serverip="$(uci -q get shadowsocks-rust.${server}.server)"
 			disabled="$(uci -q get shadowsocks-rust.${server}.disabled)"
 			config_foreach shadowsocks-rust ${server}
-		fi
+			;;
+		esac
 		ssredir=0
-		if [ "$type" = "libev" ]; then
+		if [ -n "$_ss_cfg" ]; then
 			_remove_rule() {
-				[ "$(uci -q get shadowsocks-libev.$1.server)" = "$2" ] && ssredir=$((ssredir + 1))
+				[ "$(uci -q get ${_ss_cfg}.$1.server)" = "$2" ] && ssredir=$((ssredir + 1))
 			}
-			config_foreach _remove_rule ss_redir ${server}
-			uci -q commit shadowsocks-libev
-		fi
-		if [ "$type" = "rust" ]; then
-			_remove_rule() {
-				[ "$(uci -q get shadowsocks-rust.$1.server)" = "$2" ] && ssredir=$((ssredir + 1))
-			}
-			config_foreach _remove_rule ss_redir ${server}
-			uci -q commit shadowsocks-rust
+			config_foreach _remove_rule ss_redir "${server}"
+			uci -q commit "$_ss_cfg"
 		fi
 
 		[ "${last}" -ge "${retry}" ] && [ "$ssredir" -ge 1 ] && {
@@ -230,26 +232,15 @@ while true; do
 #					[ "$type" = "rust" ] && /etc/init.d/shadowsocks-rust rules_down 2> /dev/null
 #				#fi
 #				else
-				if [ "$type" = "libev" ]; then
+				if [ -n "$_ss_cfg" ]; then
 					_remove_rule() {
-						[ "$(uci -q get shadowsocks-libev.$1.server)" != "$2" ] && return
-						uci -q set shadowsocks-libev.$1.disabled=1
+						[ "$(uci -q get ${_ss_cfg}.$1.server)" != "$2" ] && return
+						uci -q set ${_ss_cfg}.$1.disabled=1
 					}
-					config_foreach _remove_rule ss_redir ${server}
-					uci -q commit shadowsocks-libev
+					config_foreach _remove_rule ss_redir "${server}"
+					uci -q commit "$_ss_cfg"
+					/etc/init.d/${_ss_cfg} rules_reset 2>/dev/null
 				fi
-				if [ "$type" = "rust" ]; then
-					_remove_rule() {
-						[ "$(uci -q get shadowsocks-rust.$1.server)" != "$2" ] && return
-						uci -q set shadowsocks-rust.$1.disabled=1
-					}
-					config_foreach _remove_rule ss_redir ${server}
-					uci -q commit shadowsocks-rust
-				fi
-#				[ "$type" = "libev" ] && /etc/init.d/shadowsocks-libev reload 2> /dev/null
-#				[ "$type" = "rust" ] && /etc/init.d/shadowsocks-rust reload 2> /dev/null
-				[ "$type" = "libev" ] && /etc/init.d/shadowsocks-libev rules_reset 2> /dev/null
-				[ "$type" = "rust" ] && /etc/init.d/shadowsocks-rust rules_reset 2> /dev/null
 				_get_ip
 				server_ping=false
 				_ping_server $serverip
@@ -257,33 +248,26 @@ while true; do
 					_log "Server $server ($serverip) seems down, no answer to ping"
 					OMR_TRACKER_STATUS_MSG="${OMR_TRACKER_STATUS_MSG} - Server $server ($serverip) seems down, no answer to ping"
 				fi
-				mail_alert="$(uci -q get omr-tracker.proxy.mail_alert)"
-				#[ -z "$mail_alert" ] && mail_alert="$(uci -q get omr-tracker.defaults.mail_alert)"
-				[ "$mail_alert" = "1" ] && [ -n "$(uci -q get mail.default.to)" ] && {
-					OMR_SYSNAME="$(uci -q get system.@system[0].hostname)"
-					if [ "$(uci -q get omr-tracker.defaults.mail_down_subject)" != "" ] && [ "$(uci -q get omr-tracker.defaults.mail_down_message)" != "" ]; then
-						mail_subject="$(uci -q get omr-tracker.defaults.mail_down_subject)"
-						mail_subject=`echo $mail_subject | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g"`
-						mail_message="$(uci -q get omr-tracker.defaults.mail_down_message)"
-						mail_message=`echo $mail_message | sed -e "s/%SYSNAME%/$OMR_SYSNAME/g" -e "s/%INTERFACE%/Shadowsocks Proxy/g" -e "s/%DEVICE%/Shadowsocks Proxy/g" -e "s/%MESSAGE%/$OMR_TRACKER_STATUS_MSG/g"`
-						echo -e "Subject: ${mail_subject}\n\n${mail_message}" | sendmail $(uci -q get mail.default.to)
-					else
-						echo -e "Subject: $OMR_SYSNAME: Shadowsocks Proxy is down\n\nConnection failure of ShadowSocks proxy detected. The reason is \"$OMR_TRACKER_STATUS_MSG\"." | sendmail $(uci -q get mail.default.to)
-					fi
-				}
+				_send_mail_alert_ss "down"
 				script_alert_down="$(uci -q get omr-tracker.proxy.script_alert_down)"
 				[ -n "$script_alert_down" ] && eval $script_alert_down
 				if [ "$disabled" != "1" ] && [ "$serverip" != "1" ]; then
-					if [ "$type" = "libev" ] && [ "$(pgrep ss-redir)" = "" ] && [ "$(uci -q get shadowsocks-libev.${server}.key)" != "" ]; then
-						_log "Can't find shadowsocks, restart it..."
-						/etc/init.d/shadowsocks-libev restart
-						sleep 5
-					fi
-					if [ "$type" = "rust" ] && [ "$(pgrep sslocal)" = "" ] && [ "$(uci -q get shadowsocks-rust.${server}.password)" != "" ]; then
-						_log "Can't find shadowsocks rust, restart it..."
-						/etc/init.d/shadowsocks-rust restart
-						sleep 5
-					fi
+					case "$type" in
+					libev)
+						if ! pgrep -q ss-redir && [ "$(uci -q get shadowsocks-libev.${server}.key)" != "" ]; then
+							_log "Can't find shadowsocks, restart it..."
+							/etc/init.d/shadowsocks-libev restart
+							sleep 5
+						fi
+						;;
+					rust)
+						if ! pgrep -q sslocal && [ "$(uci -q get shadowsocks-rust.${server}.password)" != "" ]; then
+							_log "Can't find shadowsocks rust, restart it..."
+							/etc/init.d/shadowsocks-rust restart
+							sleep 5
+						fi
+						;;
+					esac
 				fi
 				sleep $wait_test
 				OMR_TRACKER_STATUS="ERROR"

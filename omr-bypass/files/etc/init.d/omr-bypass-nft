@@ -29,7 +29,10 @@ _get_firewall_zones() {
 	all_zones=""
 	get_all_zones() {
 		config_get name "$1" name
-		[ -n "$(echo $name | grep -i -e '^wan' -e '^vpn' -e openwisp)" ] || all_zones="$all_zones $name"
+		case "$(echo "$name" | tr 'A-Z' 'a-z')" in
+			wan*|vpn*|*openwisp*) ;;
+			*) all_zones="$all_zones $name" ;;
+		esac
 	}
 	config_foreach get_all_zones zone
 	echo $all_zones
@@ -38,19 +41,19 @@ _get_firewall_zones() {
 _add_proto() {
 	protoname=$1
 	[ -z "$protoname" ] && return
-	if [ "$(dd if=/proc/net/xt_ndpi/proto bs=4096 2> /dev/null | grep $protoname)" = "" ]; then
+	if ! dd if=/proc/net/xt_ndpi/proto bs=4096 2>/dev/null | grep -q "$protoname"; then
 		echo "add_custom $protoname" >/proc/net/xt_ndpi/proto
 	fi
-	allurls="$(dd if=/proc/net/xt_ndpi/host_proto bs=4096 2> /dev/null)"
-	hosts="$( uci -q get omr-bypass.$protoname.url )"
+	allurls=$(dd if=/proc/net/xt_ndpi/host_proto bs=4096 2>/dev/null)
+	hosts=$(uci -q get omr-bypass.$protoname.url)
 	for url in $hosts; do
-		if [ "$(echo "$allurls" | grep -i ^${protoname}: | grep $url)" = "" ]; then
+		if ! echo "$allurls" | grep -qi "^${protoname}:.*${url}"; then
 			echo "$protoname:$url" >/proc/net/xt_ndpi/host_proto
 		fi
 	done
-	ip="$( uci -q get omr-bypass.$protoname.ip )"
+	ip=$(uci -q get omr-bypass.$protoname.ip)
 	for ip in $ips; do
-		if [ "$(echo "$allurls" | grep -i ^${protoname}: | grep $ip)" = "" ]; then
+		if ! echo "$allurls" | grep -qi "^${protoname}:.*${ip}"; then
 			echo "$protoname:$ip" >/proc/net/xt_ndpi/ip_proto
 		fi
 	done
@@ -123,8 +126,12 @@ _bypass_domains() {
 	[ -z "$domain" ] && return
 	#[ -z "$family" ] && family="ipv4ipv6"
 	#[ -z "$noipv6" ] && noipv6="1"
-	if [ "$(echo $domain | grep '\.$')" != "" ] || [ "$(echo $domain | grep '\.\*$')" != "" ]; then
-		tlds=`curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt`
+	case "$domain" in
+		*.|*.\*) _domain_wildcard=1 ;;
+		*)       _domain_wildcard=0 ;;
+	esac
+	if [ "$_domain_wildcard" = "1" ]; then
+		tlds=$(curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt)
 		domain="$(echo '"$domain"' | sed 's:*::')"
 		domainlist=""
 		# construct list of domains to query
@@ -161,8 +168,7 @@ _bypass_domain() {
 	local family=$3
 	local noipv6=$4
 	local tcpudp=$5
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	[ -z "$intf" ] && intf="all"
 	[ -z "$noipv6" ] && noipv6="1"
 	[ -z "$tcpudp" ] && tcpudp="all"
@@ -181,7 +187,7 @@ _bypass_domain() {
 				done
 			fi
 		fi
-		if [ "$(uci -q get dhcp.omr_dst_bypass_${intf}.domain | sed 's/ /\n/g' | grep $domain)" = "" ]; then
+		if ! uci -q get dhcp.omr_dst_bypass_${intf}.domain | grep -qw "$domain"; then
 			uci -q add_list dhcp.omr_dst_bypass_${intf}.domain="$domain"
 			uci -q set firewall.omr_dst_bypass_${intf}_4.enabled='1'
 			add_domains="true"
@@ -197,7 +203,7 @@ _bypass_domain() {
 				uci -q set firewall.omr_dst_bypass_${intf}_dstip_6_accept_${zone}.enabled='1'
 			done
 		fi
-		if [ "$(uci -q get dhcp.@dnsmasq[0].noipv6 | grep /$domain/)" = "" ] && [ "$noipv6" = "1" ]; then
+		if ! uci -q get dhcp.@dnsmasq[0].noipv6 | grep -qF "/$domain/" && [ "$noipv6" = "1" ]; then
 			uci -q add_list dhcp.@dnsmasq[0].noipv6="$domain"
 		fi
 		#logger -t "omr-bypass" "Get IPs of $domain... Done"
@@ -212,8 +218,7 @@ _bypass_mac() {
 	config_get intf $1 interface
 	config_get enabled $1 enabled
 	[ "$enabled" = "0" ] && return
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
 	[ -z "$intf" ] && intf="all"
@@ -241,8 +246,7 @@ _bypass_lan_ip() {
 	config_get intf $1 interface
 	config_get enabled $1 enabled
 	[ "$enabled" = "0" ] && return
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	#[ -n "$intf" ] && [ -z "$(ipset --list | grep omr_dst_bypass_$intf)" ] && return
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
@@ -275,14 +279,13 @@ _bypass_dest_port() {
 	config_get intf $1 interface
 	config_get enabled $1 enabled
 	[ "$enabled" = "0" ] && return
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	#[ -n "$intf" ] && [ -z "$(ipset --list | grep omr_dst_bypass_$intf)" ] && return
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
 	[ -z "$intf" ] && intf="all"
 	[ -z "$dport" ] && return
-	dport="$(echo $dport | sed 's/:/-/')"
+	dport=$(echo "$dport" | sed 's/:/-/')
 	[ -z "$proto" ] && return
 	if [ "$disableipv6" = "0" ]; then
 		protocol="4 6"
@@ -320,14 +323,13 @@ _bypass_src_port() {
 	config_get intf $1 interface
 	config_get enabled $1 enabled
 	[ "$enabled" = "0" ] && return
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	#[ -n "$intf" ] && [ -z "$(ipset --list | grep omr_dst_bypass_$intf)" ] && return
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
 	[ -z "$intf" ] && intf="all"
 	[ -z "$sport" ] && return
-	sport="$(echo $sport | sed 's/:/-/')"
+	sport=$(echo "$sport" | sed 's/:/-/')
 	[ -z "$proto" ] && return
 	if [ "$disableipv6" = "0" ]; then
 		protocol="4 6"
@@ -371,14 +373,13 @@ _bypass_proto() {
 	[ "$enabled" = "0" ] && return
 	[ -z "$noipv6" ] && noipv6="1"
 	[ -z "$family" ] && family="ipv4ipv6"
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	#[ -n "$intf" ] && [ -z "$(ipset --list | grep omr_dst_bypass_$intf)" ] && return
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
 	[ -z "$intf" ] && intf="all"
 	[ -z "$proto" ] && return
-	if [ "$(uci -q get openmptcprouter.settings.ndpi)" != "0" ] && [ "$ndpi" != "0" ] && [ "$vpn" != "1" ]; then
+	if [ "$_omr_ndpi" != "0" ] && [ "$ndpi" != "0" ] && [ "$vpn" != "1" ]; then
 		if [ "$intf" = "all" ]; then
 			if [ "$family" = "ipv4" ] || [ "$family" = "ipv4ipv6" ]; then
 				$IPTABLESRESTORE -w --wait=60  --noflush <<-EOF
@@ -419,11 +420,11 @@ _bypass_proto() {
 	local domains
 	domains="$(cat /proc/net/xt_ndpi/host_proto | grep -i $proto: | sed -e "s/$proto://i" -e 's/*//' -e 's/,/ /g')"
 	if [ -n "$domains" ]; then
-		tlds=`curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt`
+		tlds=$(curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt)
 		for domain in $domains; do
 			if [ -n "$domain" ]; then
-				domain="$(echo $domain | sed 's/^\.//')"
-				if [ "$(echo $domain | grep '\.$')" != "" ]; then
+				domain="${domain#.}"
+				case "$domain" in *.)
 					domainlist=""
 					# construct list of domains to query
 					i=0
@@ -432,7 +433,7 @@ _bypass_proto() {
 						# trim off header
 						if [ "$i" -lt "12" ] || [ "$i" -gt "50" ]; then
 							continue
-						fi 
+						fi
 						# add to command
 						domainlist="${domainlist} ${domain}${tld}"
 					done
@@ -447,9 +448,11 @@ _bypass_proto() {
 					for validdomain in $domainlist; do
 						_bypass_domain $validdomain $intf $family $noipv6
 					done
-				else
+					;;
+				*)
 					_bypass_domain $domain $intf $family $noipv6
-				fi
+					;;
+				esac
 			fi
 		done
 	fi
@@ -472,15 +475,14 @@ _bypass_proto_without_ndpi() {
 	[ "$enabled" = "0" ] && return
 	#[ -z "$noipv6" ] && noipv6="1"
 	#[ -z "$family" ] && family="ipv4ipv6"
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
 	#[ -n "$intf" ] && [ -z "$(ipset --list | grep omr_dst_bypass_$intf)" ] && return
 	local intfid="$(uci -q get omr-bypass.$intf.id)"
 
 	[ -z "$intf" ] && intf="all"
 	[ "$intf" = "all" ] && intfid=""
 	[ -z "$proto" ] && return
-	if [ "$(uci -q get openmptcprouter.settings.ndpi)" == "0" ] || [ "$ndpi" == "0" ] || [ "$vpn" = "1" ]; then
+	if [ "$_omr_ndpi" = "0" ] || [ "$ndpi" == "0" ] || [ "$vpn" = "1" ]; then
 		ALLIPS=$(sqlite3 /usr/share/omr-bypass/omr-bypass.db "select ip from ipproto where proto=\"$proto\";" ".exit")
 		if [ -n "$ALLIPS" ]; then
 			uci -q batch <<-EOF >/dev/null
@@ -578,11 +580,11 @@ _bypass_proto_without_ndpi() {
 	#domains="$(cat /proc/net/xt_ndpi/host_proto | grep -i $proto: | sed -e "s/$proto://i" -e 's/*//' -e 's/,/ /g')"
 	domains=$(sqlite3 /usr/share/omr-bypass/omr-bypass.db "select host from hostproto where proto='"$proto"';" ".exit")
 	if [ -n "$domains" ]; then
-		tlds=`curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt`
+		tlds=$(curl --max-time 4 -s -k https://data.iana.org/TLD/tlds-alpha-by-domain.txt)
 		for domain in $domains; do
 			if [ -n "$domain" ]; then
-				domain="$(echo $domain | sed 's/^\.//')"
-				if [ "$(echo $domain | grep '\.$')" != "" ]; then
+				domain="${domain#.}"
+				case "$domain" in *.)
 					domainlist=""
 					# construct list of domains to query
 					i=0
@@ -606,9 +608,11 @@ _bypass_proto_without_ndpi() {
 					for validdomain in $domainlist; do
 						_bypass_domain $validdomain $intf $family $noipv6 ${tcpudp}
 					done
-				else
+					;;
+				*)
 					_bypass_domain $domain $intf $family $noipv6 ${tcpudp}
-				fi
+					;;
+				esac
 			fi
 		done
 	fi
@@ -780,10 +784,10 @@ _intf_rule() {
 	[ "$1" = "all" ] && intf="all"
 	[ "$intf" = "omrvpn" ] && return
 	[ -z "$intf" ] && intf=$(ifstatus "$1" | jsonfilter -q -e '@["l3_device"]')
-	[ -n "$(echo $intf | grep '@')" ] && intf=$(ifstatus "$1" | jsonfilter -q -e '@["device"]')
+	case "$intf" in *@*) intf=$(ifstatus "$1" | jsonfilter -q -e '@["device"]') ;; esac
 	[ -z "$intf" ] && config_get intf $1 device
-	[ -n "$(echo $intf | grep '/')" ] && return
-	[ -n "$(echo $intf | grep '@')" ] && return
+	case "$intf" in */*) return ;; esac
+	case "$intf" in *@*) return ;; esac
 	#count=$((count+1))
 	[ "$intf" != "all" ] && config_get count $1 metric
 	[ "$intf" = "all" ] && count=""
@@ -792,9 +796,8 @@ _intf_rule() {
 	#[ "$mode" = "off" ] && return
 	[ "$intf" != "all" ] && [ -z "$count" ] && return
 	[ -z "$intf" ] && return
-	intf=$(echo $intf | sed -e 's/\./_/')
-	intf=$(echo $intf | sed -e 's/-/_/')
-	[ "$(echo $1 | grep _dev)" != "" ] && return
+	intf=$(echo "$intf" | sed 's/[.-]/_/g')
+	case "$1" in *_dev*) return ;; esac
 	[ "$intf" = "lo" ] && return
 	[ -z "$intf" ] && return
 #	[ -z "$RELOAD" ] || [ "$(uci show firewall.omr_dst_bypass_$intf_4)" = "" ] && {
@@ -968,17 +971,17 @@ _intf_rule() {
 			EOF
 		done
 
-	if [ "$(uci -q get openmptcprouter.settings.proxy)" = "shadowsocks" ] && [ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ]; then
+	if [ "$_omr_proxy" = "shadowsocks" ] && [ "$_ss_libev_disabled" != "1" ]; then
 		#config_load shadowsocks-libev
 		#config_foreach _intf_rule_ss_rules ss_rules
 		_intf_rule_ss_rules
-	elif [ "$(uci -q get openmptcprouter.settings.proxy)" = "shadowsocks-rust" ] && [ "$(uci -q get shadowsocks-rust.sss0.disabled)" != "1" ]; then
+	elif [ "$_omr_proxy" = "shadowsocks-rust" ] && [ "$_ss_rust_disabled" != "1" ]; then
 		#config_load shadowsocks-rust
 		#config_foreach _intf_rule_ss_rules ss_rules
 		_intf_rule_ss_rules
-	elif [ -n "$(uci -q get openmptcprouter.settings.proxy | grep v2ray)" ] && [ "$(uci -q get v2ray.main.enabled)" = "1" ]; then
+	elif [ "$_omr_proxy" != "${_omr_proxy#*v2ray}" ] && [ "$_v2ray_enabled" = "1" ]; then
 		_intf_rule_v2ray_rules
-	elif [ -n "$(uci -q get openmptcprouter.settings.proxy | grep xray)" ] && [ "$(uci -q get xray.main.enabled)" = "1" ]; then
+	elif [ "$_omr_proxy" != "${_omr_proxy#*xray}" ] && [ "$_xray_enabled" = "1" ]; then
 		_intf_rule_xray_rules
 	fi
 
@@ -1008,7 +1011,7 @@ _bypass_asn() {
 	config_get enabled $1 enabled
 	[ "$enabled" = "0" ] && return
 	local asnips
-	asnips=`curl --max-time 4 -s -k https://stat.ripe.net/data/announced-prefixes/data.json?resource=${asn} | jsonfilter -q -e '@.data.prefixes.*.prefix'`
+	asnips=$(curl --max-time 4 -s -k https://stat.ripe.net/data/announced-prefixes/data.json?resource=${asn} | jsonfilter -q -e \'@.data.prefixes.*.prefix\')
 	for ip in $asnips; do
 		_bypass_ip $ip $interface
 	done
@@ -1071,21 +1074,27 @@ _xray_rules_config() {
 }
 
 _delete_dhcp_ipset() {
-	[ -n "$(echo $1 | grep omr_dst_bypass)" ] && {
+	case "$1" in
+	*omr_dst_bypass*)
 		uci -q delete dhcp.$1
-	}
+		;;
+	esac
 }
 
 _delete_firewall_rules() {
-	([ -n "$(echo $1 | grep -e omr_dst_bypass -e omr6_dst_bypass -e bypass_ -e bypass6_)" ]) && {
+	case "$1" in
+	*omr_dst_bypass*|*omr6_dst_bypass*|*bypass_*|*bypass6_*)
 		uci -q delete firewall.$1
-	}
+		;;
+	esac
 }
 
 _delete_network_rules() {
-	[ -n "$(echo $1 | grep fw_rule)" ] && {
+	case "$1" in
+	*fw_rule*)
 		uci -q delete network.$1
-	}
+		;;
+	esac
 }
 
 boot() {
@@ -1116,6 +1125,13 @@ start_service() {
 		config_foreach _add_proto proto
 	}
 	disableipv6="$(uci -q get openmptcprouter.settings.disable_ipv6)"
+	# Cache proxy/VPN/ndpi state — read once, reused by _intf_rule and _bypass_proto (called per interface/proto)
+	_omr_proxy=$(uci -q get openmptcprouter.settings.proxy)
+	_omr_ndpi=$(uci -q get openmptcprouter.settings.ndpi)
+	_ss_libev_disabled=$(uci -q get shadowsocks-libev.sss0.disabled)
+	_ss_rust_disabled=$(uci -q get shadowsocks-rust.sss0.disabled)
+	_v2ray_enabled=$(uci -q get v2ray.main.enabled)
+	_xray_enabled=$(uci -q get xray.main.enabled)
 	#noipv6="$(uci -q get omr-bypass.global.noipv6)"
 	fwfilechangemd5=""
 	[ -f /etc/firewall.omr-bypass ] && fwfilechangemd5="$(md5sum /etc/firewall.omr-bypass)"
@@ -1127,11 +1143,11 @@ start_service() {
 	#EOF
 	#config_load shadowsocks-libev
 	#config_foreach _ss_rules_config ss_rules
-	([ "$(uci -q get shadowsocks-libev.sss0.disabled)" != "1" ] || [ "$(uci -q get shadowsocks-rust.sss0.disabled)" != "1" ]) && _ss_rules_config
+	{ [ "$_ss_libev_disabled" != "1" ] || [ "$_ss_rust_disabled" != "1" ]; } && _ss_rules_config
 	#config_load shadowsocks-rust
 	#config_foreach _ss_rules_config ss_rules
-	[ "$(uci -q get v2ray.main.enabled)" = "1" ] && _v2ray_rules_config
-	[ "$(uci -q get xray.main.enabled)" = "1" ] && _xray_rules_config
+	[ "$_v2ray_enabled" = "1" ] && _v2ray_rules_config
+	[ "$_xray_enabled" = "1" ] && _xray_rules_config
 
 
 	uci -q batch <<-EOF

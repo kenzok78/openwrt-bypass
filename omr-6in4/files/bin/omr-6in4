@@ -2,6 +2,9 @@
 # Copyright (C) 2018-2019 Ycarus (Yannick Chabanois) <ycarus@zugaina.org>
 
 while true; do
+	iface=""
+	addr=""
+	peer=""
 	if [ "$(uci -q get glorytun.vpn.enable)" = "1" ]; then
 		iface=$(uci -q get glorytun.vpn.dev)
 		addr=$(uci -q get glorytun.vpn.localip)
@@ -22,11 +25,12 @@ while true; do
 		iface="vpn_softether"
 	fi
 	[ -z "$addr" ] && addr=$(ubus call network.interface.omrvpn status | jsonfilter -q -e '@["ipv4-address"][0].address' | tr -d "\n")
-	if [ -n "$iface" ] && [ -d "/sys/class/net/$iface" ] && [ "$(uci -q get openmptcprouter.omrvpn.state)" = "up" ]; then
+	if [ -n "$iface" ] && [ -d "/sys/class/net/$iface" ]; then
 		[ -z "$addr" ] && [ -n "$iface" ] && addr=$(ip -4 addr show dev "$iface" | grep inet | awk '{print $2}' | cut -d/ -f1 | tr -d "\n")
 		[ -z "$peer" ] && peer=$(ubus call network.interface.omrvpn status | jsonfilter -q -l 1 -e '@.route[@.target="0.0.0.0"].nexthop' | tr -d "\n")
 		[ -z "$peer" ] && peer=$(ip -4 r list dev "$iface" | grep via | grep -v default | grep -v metric | grep -v / | awk '{print $1; exit}' | tr -d "\n")
 		[ -z "$peer" ] && peer=$(ip -4 r list dev "$iface" | grep kernel | awk '/proto kernel/ {print $1}' | grep -v / | tr -d "\n")
+		[ -z "$peer" ] && peer=$(ip -4 r list dev "$iface" | awk '/^default via/ {print $3; exit}')
 		[ -n "$addr" ] && [ -n "$peer" ] && {
 			#logger -t "omr6in4" "addr: $addr - peer: $peer"
 			if [ "$addr" != "$(uci -q get network.omr6in4.ipaddr)" ] || [ "$peer" != "$(uci -q get network.omr6in4.peeraddr)" ] || [ "$(ip -6 route show default dev 6in4-omr6in4 metric 1 | grep via)" = "" ]; then
@@ -52,8 +56,48 @@ while true; do
 				[ -z "$ipv6_gw" ] && ipv6_gw='fe80::a00:1'
 				#[ -z "$ipv6_gw" ] && ipv6_gw='fe80::aff:ff01'
 				ip -6 route add "${ipv6_gw}" dev 6in4-omr6in4 > /dev/null 2>&1
-				ip -6 route 2002::/16 dev 6in4-omr6in4 > /dev/null 2>&1
+				ip -6 route add 2002::/16 dev 6in4-omr6in4 > /dev/null 2>&1
 				ip -6 route replace default via "${ipv6_gw}" dev 6in4-omr6in4 metric 1 > /dev/null 2>&1
+				# Resolve LAN device from firewall lan zone to support custom network section names.
+				lan_dev=""
+				lan_ip6assign=""
+				lan_networks=$(uci -q get firewall.zone_lan.network)
+				if [ -z "$lan_networks" ]; then
+					for z in $(uci -q show firewall | sed -n "s/^firewall\.\([^=]*\)=zone$/\1/p"); do
+						if [ "$(uci -q get firewall.$z.name)" = "lan" ]; then
+							lan_networks=$(uci -q get firewall.$z.network)
+							break
+						fi
+					done
+				fi
+				for netname in $lan_networks; do
+					cand_dev=$(ubus call network.interface."$netname" status 2>/dev/null | jsonfilter -q -e '@.l3_device' | tr -d "\n")
+					[ -z "$cand_dev" ] && cand_dev=$(uci -q get network."$netname".device)
+					[ -z "$cand_dev" ] && cand_dev=$(uci -q get network."$netname".ifname)
+					cand_dev=${cand_dev%% *}
+					cand_ip6assign=$(uci -q get network."$netname".ip6assign)
+					if [ -n "$cand_dev" ] && [ -d "/sys/class/net/$cand_dev" ]; then
+						lan_dev="$cand_dev"
+						[ -n "$cand_ip6assign" ] && lan_ip6assign="$cand_ip6assign"
+						break
+					fi
+				done
+				[ -z "$lan_dev" ] && lan_dev=$(uci -q get network.lan.device)
+				[ -z "$lan_dev" ] && lan_dev=$(uci -q get network.lan.ifname)
+				[ -z "$lan_dev" ] && lan_dev=$(uci -q get network.LAN.device)
+				[ -z "$lan_dev" ] && lan_dev=$(uci -q get network.LAN.ifname)
+				lan_dev=${lan_dev%% *}
+				[ -z "$lan_dev" ] && lan_dev="br-lan"
+				ula_prefix=$(uci -q get network.globals.ula_prefix)
+				[ -z "$lan_ip6assign" ] && lan_ip6assign=$(uci -q get network.lan.ip6assign)
+				[ -z "$lan_ip6assign" ] && lan_ip6assign=$(uci -q get network.LAN.ip6assign)
+				[ -z "$lan_ip6assign" ] && lan_ip6assign="60"
+				lan_ula_prefix=$(echo "$ula_prefix" | sed "s|/48|/$lan_ip6assign|")
+				if [ -n "$lan_ula_prefix" ] && [ -d "/sys/class/net/$lan_dev" ]; then
+					# Ensure a connected LAN ULA route exists and remove auto blackhole.
+					ip -6 route replace "$lan_ula_prefix" dev "$lan_dev" > /dev/null 2>&1
+					ip -6 route del unreachable "${ula_prefix%%/*}/48" > /dev/null 2>&1
+				fi
 				if [ "$(uci -q get openmptcprouter.settings.uci_route)" = "1" ]; then
 					uci -q batch <<-EOF
 						set network.omr6in4_route6_default=route6

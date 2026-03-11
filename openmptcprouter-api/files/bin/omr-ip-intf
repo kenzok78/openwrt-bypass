@@ -27,24 +27,24 @@ get_ip_from_website() {
 	[ -z "$check_ipv4_website" ] && check_ipv4_website="http://ip.openmptcprouter.com"
 	checkip=$(echo $check_ipv4_website | sed -e 's/https:\/\///' -e 's/http:\/\///' | xargs dig +nocmd +noall +answer A | grep -v CNAME | awk '{print $5}' | tr -d "\n")
 	if [ -n "$(ipset list 2>/dev/null | grep ss_rules)" ]; then
-		for ip in $checkip; do
-			ipset add ss_rules_dst_bypass_all $ip > /dev/null 2>&1
+		for _checkip in $checkip; do
+			ipset add ss_rules_dst_bypass_all $_checkip > /dev/null 2>&1
 		done
 	fi
 	if [ -n "$(nft list set inet fw4 omr_dst_bypass_all_4 2>/dev/null)" ]; then
-		for ip in $checkip; do
-			nft add element inet fw4 omr_dst_bypass_all_4 { $ip } >/dev/null 2>&1
+		for _checkip in $checkip; do
+			nft add element inet fw4 omr_dst_bypass_all_4 { $_checkip } >/dev/null 2>&1
 		done
 	fi
 	getip="$(curl -s -4 -m ${timeout} --interface $intf $check_ipv4_website 2>/dev/null)"
 	if [ -n "$(ipset list 2>/dev/null | grep ss_rules)" ]; then
-		for ip in $checkip; do
-			ipset del ss_rules_dst_bypass_all $ip
+		for _checkip in $checkip; do
+			ipset del ss_rules_dst_bypass_all $_checkip
 		done
 	fi
 	if [ -n "$(nft list set inet fw4 omr_dst_bypass_all_4 2>/dev/null)" ]; then
-		for ip in $checkip; do
-			nft delete element inet fw4 omr_dst_bypass_all_4 { $ip } >/dev/null 2>&1
+		for _checkip in $checkip; do
+			nft delete element inet fw4 omr_dst_bypass_all_4 { $_checkip } >/dev/null 2>&1
 		done
 	fi
 	if expr "$getip" : '[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*$' >/dev/null; then
